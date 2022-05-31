@@ -72,14 +72,9 @@ contract NFTRewardDataSourceDelegate is
   uint256 private _maxSupply;
 
   /**
-    @notice
-    Next token id to be minted.
-  */
-  uint256 private _nextTokenId;
+    @notice Current supply.
 
-  /**
-    @notice
-    Current supply.
+    @dev Also used to check if rewards supply was exhausted and as nextTokenId
   */
   uint256 private _supply;
 
@@ -188,11 +183,10 @@ contract NFTRewardDataSourceDelegate is
       _data.amount.value >= _minContribution.value &&
       _data.amount.currency == _minContribution.currency
     ) {
-      uint256 tokenId = _nextTokenId;
+      uint256 tokenId = _supply;
       _mint(_data.beneficiary, tokenId);
 
       _supply += 1;
-      _nextTokenId += 1;
     }
   }
 
@@ -340,11 +334,10 @@ contract NFTRewardDataSourceDelegate is
       revert SUPPLY_EXHAUSTED();
     }
 
-    tokenId = _nextTokenId;
+    tokenId = _supply;
     _mint(_account, tokenId);
 
     _supply += 1;
-    _nextTokenId += 1;
   }
 
   function burn(address _account, uint256 _tokenId) external override onlyOwner {
