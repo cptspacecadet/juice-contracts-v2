@@ -60,8 +60,9 @@ contract NFTRewardDataSourceDelegate is
   IJBDirectory private _directory;
 
   /**
-    @notice
-    Minimum contribution amount to trigger NFT distribution, denominated in some currency defined as part of this object.
+    @notice Minimum contribution amount to trigger NFT distribution, denominated in some currency defined as part of this object.
+
+    @dev Only one NFT will be minted for any amount at or above this value.
   */
   JBTokenAmount private _minContribution;
 

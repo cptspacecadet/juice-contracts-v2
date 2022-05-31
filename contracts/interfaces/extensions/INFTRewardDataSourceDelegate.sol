@@ -27,8 +27,6 @@ interface INFTRewardDataSourceDelegate {
 
   function mint(address) external returns (uint256);
 
-  function burn(address, uint256) external;
-
   function ownerBalance(address _account) external view returns (uint256);
 
   function isOwner(address _account, uint256 _id) external view returns (bool);

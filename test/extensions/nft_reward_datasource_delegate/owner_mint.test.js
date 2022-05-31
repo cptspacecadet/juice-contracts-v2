@@ -74,34 +74,4 @@ describe('NFTRewardDataSourceDelegate::mint(...), burn()', function () {
     await expect(jbNFTRewardDataSource.connect(deployer).mint(owner.address))
       .to.be.revertedWith('SUPPLY_EXHAUSTED');
   });
-
-  it(`Should burn token if called by owner with correct address/tokenid pair`, async function () {
-    const { jbNFTRewardDataSource, deployer, owner } = await setup();
-
-    await jbNFTRewardDataSource.connect(deployer).mint(owner.address);
-
-    await expect(jbNFTRewardDataSource.connect(deployer).burn(owner.address, 0))
-      .to.emit(jbNFTRewardDataSource, 'Transfer')
-      .withArgs(owner.address, ethers.constants.AddressZero, 0);
-
-  });
-
-  it(`Should not burn token if not called by owner`, async function () {
-    const { jbNFTRewardDataSource, deployer, owner } = await setup();
-
-    await jbNFTRewardDataSource.connect(deployer).mint(owner.address);
-
-    await expect(jbNFTRewardDataSource.connect(owner).burn(owner.address, 0))
-      .to.be.revertedWith('Ownable: caller is not the owner')
-  });
-
-  it(`Should not burn token if not called with correct address/tokenid pair`, async function () {
-    const { jbNFTRewardDataSource, deployer, owner, anotherOwner } = await setup();
-
-    await jbNFTRewardDataSource.connect(deployer).mint(owner.address);
-    await jbNFTRewardDataSource.connect(deployer).mint(anotherOwner.address);
-
-    await expect(jbNFTRewardDataSource.connect(deployer).burn(owner.address, 1))
-      .to.be.revertedWith('INCORRECT_OWNER()')
-  });
 });
