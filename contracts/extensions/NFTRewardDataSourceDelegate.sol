@@ -340,14 +340,6 @@ contract NFTRewardDataSourceDelegate is
     _supply += 1;
   }
 
-  function burn(address _account, uint256 _tokenId) external override onlyOwner {
-    if (_ownerOf[_tokenId] != _account) {
-      revert INCORRECT_OWNER();
-    }
-
-    _burn(_tokenId);
-  }
-
   /**
     @notice
     Owner-only function to set a contract metadata uri to contain opensea-style metadata.
