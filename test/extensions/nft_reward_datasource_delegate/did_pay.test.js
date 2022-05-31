@@ -128,7 +128,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
 
   });
 
-  it(`Tests for unsupported pay functions`, async function () {
+  it(`Should not mint project tokens on payment`, async function () {
     const { jbNFTRewardDataSource, projectTerminal, beneficiary } = await setup();
 
     await jbNFTRewardDataSource.payParams({
@@ -145,7 +145,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
     });
   });
 
-  it(`Tests for unsupported redeem functions`, async function () {
+  it(`Should not redeem NFTs for ether balance`, async function () {
     const { jbNFTRewardDataSource, projectTerminal, beneficiary } = await setup();
 
     await jbNFTRewardDataSource.didRedeem({
