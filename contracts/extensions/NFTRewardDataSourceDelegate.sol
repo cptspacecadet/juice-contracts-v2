@@ -17,6 +17,13 @@ import '../structs/JBDidRedeemData.sol';
 import '../structs/JBRedeemParamsData.sol';
 import '../structs/JBTokenAmount.sol';
 
+/**
+  @title Jukebox data source delegate that offers project contributors NFTs.
+
+  @notice This contract allows project creators to reward contributors with NFTs. Intended use is to incentivize initial project support by minting a limited number of NFTs to the first N contributors.
+
+  @dev Keep in mind that this PayDelegate and RedeemDelegate implementation will simply pass through the weight and reclaimAmount it is called with.
+ */
 contract NFTRewardDataSourceDelegate is
   ERC721Rari,
   Ownable,
@@ -63,12 +70,6 @@ contract NFTRewardDataSourceDelegate is
     NFT mint cap as part of this configuration.
   */
   uint256 private _maxSupply;
-
-  /**
-    @notice
-    Amount of NFTs minted thus far.
-  */
-  uint256 private _distributedSupply;
 
   /**
     @notice
@@ -154,7 +155,7 @@ contract NFTRewardDataSourceDelegate is
       IJBPayDelegate delegate
     )
   {
-    return (1, _data.memo, IJBPayDelegate(address(this)));
+    return (_data.weight, _data.memo, IJBPayDelegate(address(this)));
   }
 
   function redeemParams(JBRedeemParamsData calldata _data)
@@ -167,7 +168,7 @@ contract NFTRewardDataSourceDelegate is
       IJBRedemptionDelegate delegate
     )
   {
-    return (0, _data.memo, IJBRedemptionDelegate(address(0)));
+    return (_data.reclaimAmount.value, _data.memo, IJBRedemptionDelegate(address(0)));
   }
 
   //*********************************************************************//
@@ -179,7 +180,7 @@ contract NFTRewardDataSourceDelegate is
       revert INVALID_PAYMENT_EVENT();
     }
 
-    if (_distributedSupply == _maxSupply) {
+    if (_supply == _maxSupply) {
       return;
     }
 
@@ -192,8 +193,6 @@ contract NFTRewardDataSourceDelegate is
 
       _supply += 1;
       _nextTokenId += 1;
-
-      _distributedSupply++;
     }
   }
 
@@ -201,6 +200,9 @@ contract NFTRewardDataSourceDelegate is
   // -------------------- IJBRedemptionDelegate ------------------------ //
   //*********************************************************************//
 
+  /**
+  @notice NFT redemption is not supported.
+   */
   // solhint-disable-next-line
   function didRedeem(JBDidRedeemData calldata _data) external override {
     // not a supported workflow for NFTs
@@ -334,7 +336,7 @@ contract NFTRewardDataSourceDelegate is
   }
 
   function mint(address _account) external override onlyOwner returns (uint256 tokenId) {
-    if (_distributedSupply == _maxSupply) {
+    if (_supply == _maxSupply) {
       revert SUPPLY_EXHAUSTED();
     }
 
@@ -343,8 +345,6 @@ contract NFTRewardDataSourceDelegate is
 
     _supply += 1;
     _nextTokenId += 1;
-
-    _distributedSupply++;
   }
 
   function burn(address _account, uint256 _tokenId) external override onlyOwner {
