@@ -233,7 +233,7 @@ describe('EnglishAuctionHouse tests', () => {
     ).to.be.revertedWith('AUCTION_IN_PROGRESS()');
   });
 
-  it(`settle() fail: auction in progress`, async () => {
+  it(`settle() fail: invalid auction`, async () => {
     const { accounts, englishAuctionHouse, token, tokenOwner } = await setup();
 
     await create(token, englishAuctionHouse, tokenOwner);
