@@ -166,7 +166,7 @@ contract EnglishAuctionHouse is IEnglishAuctionHouse {
     @notice Places a bid on an existing auction. Refunds previous bid if needed.
 
     @param collection ERC721 contract.
-    @param item Token id to list.
+    @param item Token id to bid on.
    */
   function bid(IERC721 collection, uint256 item) external payable override {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
@@ -209,7 +209,7 @@ contract EnglishAuctionHouse is IEnglishAuctionHouse {
     @notice Settles the auction after expiration by either sending the item to the winning bidder or sending it back to the seller in the event that no bids met the reserve price.
 
     @param collection ERC721 contract.
-    @param item Token id to list.
+    @param item Token id to settle.
    */
   function settle(IERC721 collection, uint256 item) external override {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));

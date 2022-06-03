@@ -2,7 +2,7 @@
 pragma solidity 0.8.6;
 
 import '@openzeppelin/contracts/token/ERC721/IERC721.sol';
-import 'hardhat/console.sol';
+
 import '../interfaces/IJBDirectory.sol';
 import '../libraries/JBConstants.sol';
 import '../libraries/JBTokens.sol';
@@ -113,14 +113,14 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
   }
 
   /**
-    @notice Creates a new auction for an item from an ERC721 contract.
+    @notice Creates a new auction for an item from an ERC721 contract. This is a Dutch auction which begins at startingPrice and drops in equal increments to endingPrice by exipration. Price reduction happens at the interval specified in periodDuration. Number of periods is determined automatically and price decrement is the price difference over number of periods.
 
-    @dev startingPrice and reservePrice must each fit into uint96.
+    @dev startingPrice and endingPrice must each fit into uint96.
 
     @param collection ERC721 contract.
     @param item Token id to list.
-    @param startingPrice Minimum auction price. 0 is a valid price.
-    @param endingPrice Reserve price at which the item will be sold once the auction expires. Below this price, the item will be returned to the seller.
+    @param startingPrice Starting price for the auction from which it will drop.
+    @param endingPrice Minimum pride for the auction at which it will end at exipration time.
     @param expiration Seconds, offset from deploymentOffset, at which the auction concludes.
     @param saleSplits Jukebox splits collection that will receive auction proceeds.
    */
@@ -169,10 +169,10 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
   }
 
   /**
-    @notice Places a bid on an existing auction. Refunds previous bid if needed.
+    @notice Places a bid on an existing auction. Refunds previous bid if needed. The contract will only store the highest bid. The bid can be below current price in anticipation of the auction eventually reaching that price. The bid must be at or above the end price.
 
     @param collection ERC721 contract.
-    @param item Token id to list.
+    @param item Token id to bid on.
    */
   function bid(IERC721 collection, uint256 item) external payable override {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
@@ -212,10 +212,10 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
   }
 
   /**
-    @notice Settles the auction after expiration by either sending the item to the winning bidder or sending it back to the seller in the event that no bids met the reserve price.
+    @notice Settles the auction after expiration if no valid bids were received by sending the item back to the seller. If a valid bid matches the current price at the time of settle call, the item is sent to the bidder and the proceeds are distributed.
 
     @param collection ERC721 contract.
-    @param item Token id to list.
+    @param item Token id to settle.
    */
   function settle(IERC721 collection, uint256 item) external override {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
@@ -276,6 +276,12 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
     delete _auctionSplits[auctionId];
   }
 
+  /**
+    @notice Returns the current price for an items subject to the price range and elapsed duration.
+
+    @param collection ERC721 contract.
+    @param item Token id to get the price of.
+   */
   function currentPrice(IERC721 collection, uint256 item)
     public
     view
