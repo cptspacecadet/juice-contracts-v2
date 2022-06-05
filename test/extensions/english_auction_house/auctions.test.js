@@ -1,15 +1,26 @@
 import { expect } from 'chai';
 import { ethers } from 'hardhat';
+import { deployMockContract } from '@ethereum-waffle/mock-contract';
+
+import jbDirectory from '../../../artifacts/contracts/JBDirectory.sol/JBDirectory.json';
+import jbTerminal from '../../../artifacts/contracts/abstract/JBPayoutRedemptionPaymentTerminal.sol/JBPayoutRedemptionPaymentTerminal.json';
 
 describe('EnglishAuctionHouse tests', () => {
-  const testBasePrice = ethers.utils.parseEther('1');
-  const testReservePrice = ethers.utils.parseEther('2');
-  const testTokenId = 1;
-  const testAuctionDuration = 60 * 60;
-  const testActionFee = 5_000_000; // 0.5%
+  const projectId = 1;
+  const basePrice = ethers.utils.parseEther('1');
+  const reservePrice = ethers.utils.parseEther('2');
+  const tokenId = 1;
+  const auctionDuration = 60 * 60;
+  const feeRate = 5_000_000; // 0.5%
 
   async function setup() {
     let [deployer, tokenOwner, ...accounts] = await ethers.getSigners();
+
+    const directory = await deployMockContract(deployer, jbDirectory.abi);
+    const feeReceiverTerminal = await deployMockContract(deployer, jbTerminal.abi);
+
+    await feeReceiverTerminal.mock.addToBalanceOf.returns();
+    await directory.mock.isTerminalOf.withArgs(projectId, feeReceiverTerminal.address).returns(true);
 
     const jbSplitPayerUtilFactory = await ethers.getContractFactory('JBSplitPayerUtil', deployer);
     const jbSplitPayerUtil = await jbSplitPayerUtilFactory.connect(deployer).deploy();
@@ -18,11 +29,20 @@ describe('EnglishAuctionHouse tests', () => {
       libraries: { JBSplitPayerUtil: jbSplitPayerUtil.address },
       signer: deployer
     });
-    const englishAuctionHouse = await englishAuctionHouseFactory.connect(deployer).deploy([], ethers.constants.AddressZero, deployer.address, testActionFee);
+
+    const englishAuctionHouse = await englishAuctionHouseFactory
+      .connect(deployer)
+      .deploy(
+        projectId,
+        feeReceiverTerminal.address,
+        feeRate,
+        deployer.address,
+        directory.address
+      );
 
     const tokenFactory = await ethers.getContractFactory('MockERC721', deployer);
     const token = await tokenFactory.connect(deployer).deploy();
-    await token.connect(deployer).mint(tokenOwner.address, testTokenId);
+    await token.connect(deployer).mint(tokenOwner.address, tokenId);
 
     return {
       deployer,
@@ -35,7 +55,7 @@ describe('EnglishAuctionHouse tests', () => {
 
   async function create(token, englishAuctionHouse, tokenOwner) {
     await token.connect(tokenOwner).approve(englishAuctionHouse.address, 1);
-    await englishAuctionHouse.connect(tokenOwner).create(token.address, testTokenId, testBasePrice, testReservePrice, testAuctionDuration, []);
+    await englishAuctionHouse.connect(tokenOwner).create(token.address, tokenId, basePrice, reservePrice, auctionDuration, []);
   }
 
   it(`create() success`, async () => {
@@ -46,8 +66,8 @@ describe('EnglishAuctionHouse tests', () => {
     await expect(
       englishAuctionHouse
         .connect(tokenOwner)
-        .create(token.address, testTokenId, testBasePrice, 0, testAuctionDuration, [])
-    ).to.emit(englishAuctionHouse, 'CreateEnglishAuction').withArgs(tokenOwner.address, token.address, testTokenId, testBasePrice);
+        .create(token.address, tokenId, basePrice, 0, auctionDuration, [])
+    ).to.emit(englishAuctionHouse, 'CreateEnglishAuction').withArgs(tokenOwner.address, token.address, tokenId, basePrice);
   });
 
   it(`create() fail: not token owner`, async () => {
@@ -56,7 +76,7 @@ describe('EnglishAuctionHouse tests', () => {
     await expect(
       englishAuctionHouse
         .connect(accounts[0])
-        .create(token.address, testTokenId, testBasePrice, 0, testAuctionDuration, [])
+        .create(token.address, tokenId, basePrice, 0, auctionDuration, [])
     ).to.be.revertedWith('ERC721: transfer caller is not owner nor approved');
   });
 
@@ -64,12 +84,12 @@ describe('EnglishAuctionHouse tests', () => {
     const { englishAuctionHouse, token, tokenOwner } = await setup();
 
     await token.connect(tokenOwner).approve(englishAuctionHouse.address, 1);
-    await englishAuctionHouse.connect(tokenOwner).create(token.address, testTokenId, testBasePrice, 0, testAuctionDuration, []);
+    await englishAuctionHouse.connect(tokenOwner).create(token.address, tokenId, basePrice, 0, auctionDuration, []);
 
     await expect(
       englishAuctionHouse
         .connect(tokenOwner)
-        .create(token.address, testTokenId, testBasePrice, 0, testAuctionDuration, [])
+        .create(token.address, tokenId, basePrice, 0, auctionDuration, [])
     ).to.be.revertedWith('AUCTION_EXISTS()');
   });
 
@@ -81,7 +101,7 @@ describe('EnglishAuctionHouse tests', () => {
     await expect(
       englishAuctionHouse
         .connect(tokenOwner)
-        .create(token.address, testTokenId, '0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', 0, testAuctionDuration, [])
+        .create(token.address, tokenId, '0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', 0, auctionDuration, [])
     ).to.be.revertedWith('INVALID_PRICE()');
   });
 
@@ -93,7 +113,7 @@ describe('EnglishAuctionHouse tests', () => {
     await expect(
       englishAuctionHouse
         .connect(tokenOwner)
-        .create(token.address, 1, ethers.utils.parseEther('1'), '0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', testAuctionDuration, [])
+        .create(token.address, 1, ethers.utils.parseEther('1'), '0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', auctionDuration, [])
     ).to.be.revertedWith('INVALID_PRICE()');
   });
 
@@ -105,21 +125,21 @@ describe('EnglishAuctionHouse tests', () => {
     await expect(
       englishAuctionHouse
         .connect(accounts[0])
-        .bid(token.address, testTokenId, { value: testBasePrice })
-    ).to.emit(englishAuctionHouse, 'PlaceBid').withArgs(accounts[0].address, token.address, testTokenId, testBasePrice);
+        .bid(token.address, tokenId, { value: basePrice })
+    ).to.emit(englishAuctionHouse, 'PlaceBid').withArgs(accounts[0].address, token.address, tokenId, basePrice);
   });
 
   it(`bid() success: increase bid`, async () => {
     const { accounts, englishAuctionHouse, token, tokenOwner } = await setup();
 
     await create(token, englishAuctionHouse, tokenOwner);
-    await englishAuctionHouse.connect(accounts[0]).bid(token.address, testTokenId, { value: testBasePrice });
+    await englishAuctionHouse.connect(accounts[0]).bid(token.address, tokenId, { value: basePrice });
 
     await expect(
       englishAuctionHouse
         .connect(accounts[0])
-        .bid(token.address, testTokenId, { value: testReservePrice })
-    ).to.emit(englishAuctionHouse, 'PlaceBid').withArgs(accounts[0].address, token.address, testTokenId, testReservePrice);
+        .bid(token.address, tokenId, { value: reservePrice })
+    ).to.emit(englishAuctionHouse, 'PlaceBid').withArgs(accounts[0].address, token.address, tokenId, reservePrice);
   });
 
   it(`bid() fail: invalid price`, async () => {
@@ -130,7 +150,7 @@ describe('EnglishAuctionHouse tests', () => {
     await expect(
       englishAuctionHouse
         .connect(accounts[0])
-        .bid(token.address, testTokenId, { value: '10000' })
+        .bid(token.address, tokenId, { value: '10000' })
     ).to.be.revertedWith('INVALID_BID()');
   });
 
@@ -138,12 +158,12 @@ describe('EnglishAuctionHouse tests', () => {
     const { accounts, englishAuctionHouse, token, tokenOwner } = await setup();
 
     await create(token, englishAuctionHouse, tokenOwner);
-    await englishAuctionHouse.connect(accounts[0]).bid(token.address, testTokenId, { value: testReservePrice });
+    await englishAuctionHouse.connect(accounts[0]).bid(token.address, tokenId, { value: reservePrice });
 
     await expect(
       englishAuctionHouse
         .connect(accounts[1])
-        .bid(token.address, testTokenId, { value: testBasePrice })
+        .bid(token.address, tokenId, { value: basePrice })
     ).to.be.revertedWith('INVALID_BID()');
   });
 
@@ -151,12 +171,12 @@ describe('EnglishAuctionHouse tests', () => {
     const { accounts, englishAuctionHouse, token, tokenOwner } = await setup();
 
     await create(token, englishAuctionHouse, tokenOwner);
-    await englishAuctionHouse.connect(accounts[0]).bid(token.address, testTokenId, { value: testReservePrice });
+    await englishAuctionHouse.connect(accounts[0]).bid(token.address, tokenId, { value: reservePrice });
 
     await expect(
       englishAuctionHouse
         .connect(accounts[0])
-        .bid(token.address, testTokenId, { value: testReservePrice })
+        .bid(token.address, tokenId, { value: reservePrice })
     ).to.be.revertedWith('INVALID_BID()');
   });
 
@@ -168,7 +188,7 @@ describe('EnglishAuctionHouse tests', () => {
     await expect(
       englishAuctionHouse
         .connect(accounts[0])
-        .bid(token.address, testTokenId + 1, { value: '10000' })
+        .bid(token.address, tokenId + 1, { value: '10000' })
     ).to.be.revertedWith('INVALID_AUCTION()');
   });
 
@@ -176,13 +196,13 @@ describe('EnglishAuctionHouse tests', () => {
     const { accounts, englishAuctionHouse, token, tokenOwner } = await setup();
 
     await create(token, englishAuctionHouse, tokenOwner);
-    await network.provider.send("evm_increaseTime", [testAuctionDuration + 1]);
+    await network.provider.send("evm_increaseTime", [auctionDuration + 1]);
     await network.provider.send("evm_mine");
 
     await expect(
       englishAuctionHouse
         .connect(accounts[0])
-        .bid(token.address, testTokenId, { value: '10000' })
+        .bid(token.address, tokenId, { value: '10000' })
     ).to.be.revertedWith('AUCTION_ENDED()');
   });
 
@@ -190,32 +210,32 @@ describe('EnglishAuctionHouse tests', () => {
     const { accounts, englishAuctionHouse, token, tokenOwner } = await setup();
 
     await create(token, englishAuctionHouse, tokenOwner);
-    await englishAuctionHouse.connect(accounts[0]).bid(token.address, testTokenId, { value: testReservePrice });
+    await englishAuctionHouse.connect(accounts[0]).bid(token.address, tokenId, { value: reservePrice });
 
-    await network.provider.send("evm_increaseTime", [testAuctionDuration + 1]);
+    await network.provider.send("evm_increaseTime", [auctionDuration + 1]);
     await network.provider.send("evm_mine");
 
     await expect(
       englishAuctionHouse
         .connect(accounts[1])
-        .settle(token.address, testTokenId)
-    ).to.emit(englishAuctionHouse, 'ConcludeAuction').withArgs(tokenOwner.address, accounts[0].address, token.address, testTokenId, testReservePrice);
+        .settle(token.address, tokenId)
+    ).to.emit(englishAuctionHouse, 'ConcludeAuction').withArgs(tokenOwner.address, accounts[0].address, token.address, tokenId, reservePrice);
   });
 
   it(`settle() success: return`, async () => {
     const { accounts, englishAuctionHouse, token, tokenOwner } = await setup();
 
     await create(token, englishAuctionHouse, tokenOwner);
-    await englishAuctionHouse.connect(accounts[0]).bid(token.address, testTokenId, { value: testBasePrice });
+    await englishAuctionHouse.connect(accounts[0]).bid(token.address, tokenId, { value: basePrice });
 
-    await network.provider.send("evm_increaseTime", [testAuctionDuration + 1]);
+    await network.provider.send("evm_increaseTime", [auctionDuration + 1]);
     await network.provider.send("evm_mine");
 
     await expect(
       englishAuctionHouse
         .connect(accounts[1])
-        .settle(token.address, testTokenId)
-    ).to.emit(englishAuctionHouse, 'ConcludeAuction').withArgs(tokenOwner.address, ethers.constants.AddressZero, token.address, testTokenId, 0);
+        .settle(token.address, tokenId)
+    ).to.emit(englishAuctionHouse, 'ConcludeAuction').withArgs(tokenOwner.address, ethers.constants.AddressZero, token.address, tokenId, 0);
   });
 
   it(`settle() fail: auction in progress`, async () => {
@@ -223,13 +243,13 @@ describe('EnglishAuctionHouse tests', () => {
 
     await create(token, englishAuctionHouse, tokenOwner);
 
-    await network.provider.send("evm_increaseTime", [testAuctionDuration - 10000]);
+    await network.provider.send("evm_increaseTime", [auctionDuration - 10000]);
     await network.provider.send("evm_mine");
 
     await expect(
       englishAuctionHouse
         .connect(accounts[1])
-        .settle(token.address, testTokenId)
+        .settle(token.address, tokenId)
     ).to.be.revertedWith('AUCTION_IN_PROGRESS()');
   });
 
@@ -241,7 +261,7 @@ describe('EnglishAuctionHouse tests', () => {
     await expect(
       englishAuctionHouse
         .connect(accounts[1])
-        .settle(token.address, testTokenId + 1)
+        .settle(token.address, tokenId + 1)
     ).to.be.revertedWith('INVALID_AUCTION()');
   });
 });
