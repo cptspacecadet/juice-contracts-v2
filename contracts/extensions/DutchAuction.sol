@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.6;
 
+import '@openzeppelin/contracts/access/Ownable.sol';
+import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
 import '@openzeppelin/contracts/token/ERC721/IERC721.sol';
 
 import '../interfaces/IJBDirectory.sol';
@@ -46,7 +48,7 @@ struct AuctionData {
   uint64 startTime;
 }
 
-contract DutchAuctionHouse is IDutchAuctionHouse {
+contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
   //*********************************************************************//
   // --------------------------- custom errors ------------------------- //
   //*********************************************************************//
@@ -64,58 +66,63 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
   /**
     @notice Collection of active auctions.
    */
-  mapping(bytes32 => AuctionData) public _auctions;
+  mapping(bytes32 => AuctionData) public auctions;
 
   /**
     @notice Jukebox splits for active auctions.
    */
-  mapping(bytes32 => JBSplit[]) public _auctionSplits;
+  mapping(bytes32 => JBSplit[]) public auctionSplits;
 
   /**
     @notice Timestamp of contract deployment, used as auction expiration offset.
    */
-  uint256 public _deploymentOffset;
+  uint256 public deploymentOffset;
 
-  JBSplit[] public _feeSplits;
-  IJBDirectory public _directory;
-  address payable public _feeReceiver;
-  uint256 public _fee;
-  uint256 public _periodDuration;
+  uint256 public projectId;
+  IJBPaymentTerminal public feeReceiver;
+  uint256 public feeRate;
+  IJBDirectory public directory;
+  uint256 public periodDuration;
 
   /**
-   @notice
+    @notice
 
-   @param feeSplits Jukebox splits collection to which auction fees should be distributed.
-   @param directory If splits are specified, a JBDirecotry instance is needed to distribute them.
-   @param feeReceiver If feeSplits are not specified, this address will receive the fees from auctions.
-   @param fee Fee percentage expressed in terms of JBConstants.SPLITS_TOTAL_PERCENT (1000000000).
-   @param periodDuration Number of seconds for each pricing period.
+    @param _projectId Project that manages this auction contract.
+    @param _feeReceiver An instance of IJBPaymentTerminal which will get auction fees.
+    @param _feeRate Fee percentage expressed in terms of JBConstants.SPLITS_TOTAL_PERCENT (1000000000).
+    @param _periodDuration Number of seconds for each pricing period.
+    @param _owner xxx
+    @param _directory If splits are specified, a JBDirecotry instance is needed to distribute them.
+
+    @dev feeReceiver addToBalanceOf will be called to send fees.
    */
   constructor(
-    JBSplit[] memory feeSplits,
-    IJBDirectory directory,
-    address payable feeReceiver,
-    uint256 fee,
-    uint256 periodDuration
-  ) {
-    _deploymentOffset = block.timestamp;
+    uint256 _projectId,
+    IJBPaymentTerminal _feeReceiver,
+    uint256 _feeRate,
+    uint256 _periodDuration,
+    address _owner,
+    IJBDirectory _directory
+  ) Ownable() {
+    deploymentOffset = block.timestamp;
 
-    uint256 length = feeSplits.length;
-    for (uint256 i = 0; i < length; i += 1) {
-      _feeSplits.push(feeSplits[i]);
+    projectId = _projectId;
+    feeReceiver = _feeReceiver;
+    feeRate = _feeRate;
+    periodDuration = _periodDuration;
+    directory = _directory;
+
+    if (msg.sender != _owner) {
+      transferOwnership(_owner);
     }
-
-    _directory = directory;
-
-    _feeReceiver = feeReceiver;
-    _fee = fee;
-    _periodDuration = periodDuration;
   }
 
   /**
     @notice Creates a new auction for an item from an ERC721 contract. This is a Dutch auction which begins at startingPrice and drops in equal increments to endingPrice by exipration. Price reduction happens at the interval specified in periodDuration. Number of periods is determined automatically and price decrement is the price difference over number of periods.
 
     @dev startingPrice and endingPrice must each fit into uint96.
+
+    @dev WARNING, if using a JBSplits collection, make sure each of the splits is properly configured. The default project and default reciever during split processing is set to 0 and will therefore result in loss of funds if the split doesn't provide sufficient instructions.
 
     @param collection ERC721 contract.
     @param item Token id to list.
@@ -131,9 +138,9 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
     uint256 endingPrice,
     uint256 expiration,
     JBSplit[] calldata saleSplits
-  ) external override {
+  ) external override nonReentrant {
     bytes32 auctionId = keccak256(abi.encodePacked(address(collection), item));
-    AuctionData memory auctionDetails = _auctions[auctionId];
+    AuctionData memory auctionDetails = auctions[auctionId];
 
     if (auctionDetails.seller != address(0)) {
       revert AUCTION_EXISTS();
@@ -151,16 +158,16 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
     auctionPrices |= uint256(uint96(endingPrice)) << 96;
     auctionPrices |= uint256(uint64(expiration)) << 192;
 
-    _auctions[auctionId] = AuctionData(
+    auctions[auctionId] = AuctionData(
       msg.sender,
       auctionPrices,
       0,
-      uint64(block.timestamp - _deploymentOffset)
+      uint64(block.timestamp - deploymentOffset)
     );
 
     uint256 length = saleSplits.length;
     for (uint256 i = 0; i < length; i += 1) {
-      _auctionSplits[auctionId].push(saleSplits[i]);
+      auctionSplits[auctionId].push(saleSplits[i]);
     }
 
     collection.transferFrom(msg.sender, address(this), item);
@@ -174,9 +181,9 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
     @param collection ERC721 contract.
     @param item Token id to bid on.
    */
-  function bid(IERC721 collection, uint256 item) external payable override {
+  function bid(IERC721 collection, uint256 item) external payable override nonReentrant {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
-    AuctionData memory auctionDetails = _auctions[auctionId];
+    AuctionData memory auctionDetails = auctions[auctionId];
 
     if (auctionDetails.seller == address(0)) {
       revert INVALID_AUCTION();
@@ -184,7 +191,7 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
 
     uint256 expiration = uint256(uint64(auctionDetails.prices >> 192));
 
-    if (block.timestamp > _deploymentOffset + expiration) {
+    if (block.timestamp > deploymentOffset + expiration) {
       revert AUCTION_ENDED();
     }
 
@@ -206,7 +213,7 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
     uint256 newBid = uint256(uint160(msg.sender));
     newBid |= uint256(uint96(msg.value)) << 160;
 
-    _auctions[auctionId].bid = newBid;
+    auctions[auctionId].bid = newBid;
 
     emit PlaceBid(msg.sender, collection, item, msg.value);
   }
@@ -217,9 +224,9 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
     @param collection ERC721 contract.
     @param item Token id to settle.
    */
-  function settle(IERC721 collection, uint256 item) external override {
+  function settle(IERC721 collection, uint256 item) external override nonReentrant {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
-    AuctionData memory auctionDetails = _auctions[auctionId];
+    AuctionData memory auctionDetails = auctions[auctionId];
 
     if (auctionDetails.seller == address(0)) {
       revert INVALID_AUCTION();
@@ -229,33 +236,22 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
     uint256 minSettlePrice = currentPrice(collection, item);
     if (lastBidAmount >= minSettlePrice) {
       uint256 balance = lastBidAmount;
-      if (_feeSplits.length > 0) {
-        balance = JBSplitPayerUtil.payToSplits(
-          _feeSplits,
-          lastBidAmount,
-          JBTokens.ETH,
-          18,
-          _directory,
-          0, // TODO: defaultProjectId
-          _feeReceiver
-        );
-      } else {
-        uint256 fee = PRBMath.mulDiv(balance, _fee, JBConstants.SPLITS_TOTAL_PERCENT);
-        _feeReceiver.transfer(fee);
-        unchecked {
-          balance -= fee;
-        }
+      uint256 fee = PRBMath.mulDiv(balance, feeRate, JBConstants.SPLITS_TOTAL_PERCENT);
+      feeReceiver.addToBalanceOf(projectId, fee, JBTokens.ETH, '', '');
+
+      unchecked {
+        balance -= fee;
       }
 
-      if (_auctionSplits[auctionId].length > 0) {
+      if (auctionSplits[auctionId].length > 0) {
         balance = JBSplitPayerUtil.payToSplits(
-          _auctionSplits[auctionId],
+          auctionSplits[auctionId],
           balance,
           JBTokens.ETH,
           18,
-          _directory,
-          0, // TODO: defaultProjectId
-          _feeReceiver
+          directory,
+          0,
+          payable(address(0))
         );
       } else {
         payable(address(uint160(auctionDetails.seller))).transfer(balance);
@@ -272,8 +268,8 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
       emit ConcludeAuction(auctionDetails.seller, address(0), collection, item, 0);
     }
 
-    delete _auctions[auctionId];
-    delete _auctionSplits[auctionId];
+    delete auctions[auctionId];
+    delete auctionSplits[auctionId];
   }
 
   /**
@@ -289,19 +285,19 @@ contract DutchAuctionHouse is IDutchAuctionHouse {
     returns (uint256 price)
   {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
-    AuctionData memory auctionDetails = _auctions[auctionId];
+    AuctionData memory auctionDetails = auctions[auctionId];
 
     if (auctionDetails.seller == address(0)) {
       revert INVALID_AUCTION();
     }
 
     uint256 endTime = uint256(uint64(auctionDetails.prices >> 192));
-    uint256 periods = (endTime - auctionDetails.startTime) / _periodDuration;
+    uint256 periods = (endTime - auctionDetails.startTime) / periodDuration;
     uint256 startingPrice = uint256(uint96(auctionDetails.prices));
     uint256 endingPrice = uint256(uint96(auctionDetails.prices >> 96));
     uint256 periodPrice = (startingPrice - endingPrice) / periods;
-    uint256 elapsedPeriods = (block.timestamp - _deploymentOffset - auctionDetails.startTime) /
-      _periodDuration;
+    uint256 elapsedPeriods = (block.timestamp - deploymentOffset - auctionDetails.startTime) /
+      periodDuration;
     price = startingPrice - elapsedPeriods * periodPrice;
   }
 

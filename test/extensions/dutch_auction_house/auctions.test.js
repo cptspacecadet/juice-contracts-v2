@@ -1,16 +1,27 @@
 import { expect } from 'chai';
 import { ethers } from 'hardhat';
+import { deployMockContract } from '@ethereum-waffle/mock-contract';
+
+import jbDirectory from '../../../artifacts/contracts/JBDirectory.sol/JBDirectory.json';
+import jbTerminal from '../../../artifacts/contracts/abstract/JBPayoutRedemptionPaymentTerminal.sol/JBPayoutRedemptionPaymentTerminal.json';
 
 describe('DutchAuctionHouse tests', () => {
+  const projectId = 1;
   const startPrice = ethers.utils.parseEther('2');
   const endPrice = ethers.utils.parseEther('1');
   const tokenId = 1;
-  const auctionDuration = 60 * 60; // seconds
-  const auctionFee = 5_000_000; // 0.5%
+  const auctionDuration = 60 * 60;
+  const feeRate = 5_000_000; // 0.5%
   const pricingPeriodDuration = 5 * 60; // seconds
 
   async function setup() {
     let [deployer, tokenOwner, ...accounts] = await ethers.getSigners();
+
+    const directory = await deployMockContract(deployer, jbDirectory.abi);
+    const feeReceiverTerminal = await deployMockContract(deployer, jbTerminal.abi);
+
+    await feeReceiverTerminal.mock.addToBalanceOf.returns();
+    await directory.mock.isTerminalOf.withArgs(projectId, feeReceiverTerminal.address).returns(true);
 
     const jbSplitPayerUtilFactory = await ethers.getContractFactory('JBSplitPayerUtil', deployer);
     const jbSplitPayerUtil = await jbSplitPayerUtilFactory.connect(deployer).deploy();
@@ -21,7 +32,7 @@ describe('DutchAuctionHouse tests', () => {
     });
     const dutchAuctionHouse = await dutchAuctionHouseFactory
       .connect(deployer)
-      .deploy([], ethers.constants.AddressZero, deployer.address, auctionFee, pricingPeriodDuration);
+      .deploy(projectId, feeReceiverTerminal.address, feeRate, pricingPeriodDuration, deployer.address, directory.address);
 
     const tokenFactory = await ethers.getContractFactory('MockERC721', deployer);
     const token = await tokenFactory.connect(deployer).deploy();
