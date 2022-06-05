@@ -42,6 +42,10 @@ interface IEnglishAuctionHouse {
   function bid(IERC721, uint256) external payable;
 
   function settle(IERC721 collection, uint256 item) external;
+
+  function setFeeRate(uint256 _feeRate) external;
+
+  function setFeeReceiver(IJBPaymentTerminal _feeReceiver) external;
 }
 
 struct AuctionData {
@@ -61,6 +65,12 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
   error AUCTION_ENDED();
   error INVALID_BID();
   error INVALID_PRICE();
+  error INVALID_FEERATE();
+
+  /**
+    @notice Fee rate cap set to 10%.
+   */
+  uint256 public constant feeRateCap = 100000000;
 
   //*********************************************************************//
   // --------------------- public stored properties -------------------- //
@@ -81,7 +91,7 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
    */
   uint256 public deploymentOffset;
 
-  uint256 public projectId;
+  uint256 public immutable projectId;
   IJBPaymentTerminal public feeReceiver;
   uint256 public feeRate;
   IJBDirectory public directory;
@@ -92,6 +102,8 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
    @param _projectId Project that manages this auction contract.
    @param _feeReceiver An instance of IJBPaymentTerminal which will get auction fees.
    @param _feeRate Fee percentage expressed in terms of JBConstants.SPLITS_TOTAL_PERCENT (1000000000).
+   @param _owner Contract admin if, should be msg.sender or another address.
+   @param _directory JBDirectory instance to enable JBX integration.
 
    @dev feeReceiver addToBalanceOf will be called to send fees.
    */
@@ -255,7 +267,7 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
           payable(address(0))
         );
       } else {
-        payable(address(uint160(auctionDetails.seller))).transfer(balance);
+        payable(auctionDetails.seller).transfer(balance);
       }
 
       address buyer = address(uint160(auctionDetails.bid));
@@ -273,6 +285,27 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
     delete auctionSplits[auctionId];
   }
 
-  // TODO: consider admin functions to modify feeSplits, etc
-  // TODO: consider admin functions to recover eth & token balances
+  /**
+    @notice Change fee rate, admin only.
+
+    @param _feeRate Fee percentage expressed in terms of JBConstants.SPLITS_TOTAL_PERCENT (1000000000).
+    */
+  function setFeeRate(uint256 _feeRate) external override onlyOwner {
+    if (_feeRate > feeRateCap) {
+      revert INVALID_FEERATE();
+    }
+
+    feeRate = _feeRate;
+  }
+
+  /**
+    @param _feeReceiver JBX terminal to send fees to.
+
+    @dev addToBalanceOf on the feeReceiver will be called to send fees.
+    */
+  function setFeeReceiver(IJBPaymentTerminal _feeReceiver) external override onlyOwner {
+    feeReceiver = _feeReceiver;
+  }
+
+  // TODO: consider admin functions to recover eth & token balances, pause?
 }

@@ -39,13 +39,16 @@ interface IDutchAuctionHouse {
   function settle(IERC721 collection, uint256 item) external;
 
   function currentPrice(IERC721 collection, uint256 item) external view returns (uint256 price);
+
+  function setFeeRate(uint256 _feeRate) external;
+
+  function setFeeReceiver(IJBPaymentTerminal _feeReceiver) external;
 }
 
 struct AuctionData {
-  address seller;
+  uint256 info; // seller, duration
   uint256 prices;
   uint256 bid;
-  uint64 startTime;
 }
 
 contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
@@ -58,6 +61,12 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
   error AUCTION_ENDED();
   error INVALID_BID();
   error INVALID_PRICE();
+  error INVALID_FEERATE();
+
+  /**
+    @notice Fee rate cap set to 10%.
+   */
+  uint256 public constant feeRateCap = 100000000;
 
   //*********************************************************************//
   // --------------------- public stored properties -------------------- //
@@ -78,7 +87,7 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
    */
   uint256 public deploymentOffset;
 
-  uint256 public projectId;
+  uint256 public immutable projectId;
   IJBPaymentTerminal public feeReceiver;
   uint256 public feeRate;
   IJBDirectory public directory;
@@ -91,8 +100,8 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
     @param _feeReceiver An instance of IJBPaymentTerminal which will get auction fees.
     @param _feeRate Fee percentage expressed in terms of JBConstants.SPLITS_TOTAL_PERCENT (1000000000).
     @param _periodDuration Number of seconds for each pricing period.
-    @param _owner xxx
-    @param _directory If splits are specified, a JBDirecotry instance is needed to distribute them.
+    @param _owner Contract admin if, should be msg.sender or another address.
+    @param _directory JBDirectory instance to enable JBX integration.
 
     @dev feeReceiver addToBalanceOf will be called to send fees.
    */
@@ -142,7 +151,7 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
     bytes32 auctionId = keccak256(abi.encodePacked(address(collection), item));
     AuctionData memory auctionDetails = auctions[auctionId];
 
-    if (auctionDetails.seller != address(0)) {
+    if (auctionDetails.info != 0) {
       revert AUCTION_EXISTS();
     }
 
@@ -154,16 +163,14 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
       revert INVALID_PRICE();
     }
 
+    uint256 auctionInfo = uint256(uint160(msg.sender));
+    auctionInfo |= uint256(uint64(block.timestamp - deploymentOffset)) << 160;
+
     uint256 auctionPrices = uint256(uint96(startingPrice));
     auctionPrices |= uint256(uint96(endingPrice)) << 96;
     auctionPrices |= uint256(uint64(expiration)) << 192;
 
-    auctions[auctionId] = AuctionData(
-      msg.sender,
-      auctionPrices,
-      0,
-      uint64(block.timestamp - deploymentOffset)
-    );
+    auctions[auctionId] = AuctionData(auctionInfo, auctionPrices, 0);
 
     uint256 length = saleSplits.length;
     for (uint256 i = 0; i < length; i += 1) {
@@ -185,7 +192,7 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
     AuctionData memory auctionDetails = auctions[auctionId];
 
-    if (auctionDetails.seller == address(0)) {
+    if (auctionDetails.info == 0) {
       revert INVALID_AUCTION();
     }
 
@@ -228,7 +235,7 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
     AuctionData memory auctionDetails = auctions[auctionId];
 
-    if (auctionDetails.seller == address(0)) {
+    if (auctionDetails.info == 0) {
       revert INVALID_AUCTION();
     }
 
@@ -254,18 +261,24 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
           payable(address(0))
         );
       } else {
-        payable(address(uint160(auctionDetails.seller))).transfer(balance);
+        payable(address(uint160(auctionDetails.info))).transfer(balance);
       }
 
       address buyer = address(uint160(auctionDetails.bid));
 
       collection.transferFrom(address(this), buyer, item);
 
-      emit ConcludeAuction(auctionDetails.seller, buyer, collection, item, lastBidAmount);
+      emit ConcludeAuction(
+        address(uint160(auctionDetails.info)),
+        buyer,
+        collection,
+        item,
+        lastBidAmount
+      );
     } else {
-      collection.transferFrom(address(this), auctionDetails.seller, item);
+      collection.transferFrom(address(this), address(uint160(auctionDetails.info)), item);
 
-      emit ConcludeAuction(auctionDetails.seller, address(0), collection, item, 0);
+      emit ConcludeAuction(address(uint160(auctionDetails.info)), address(0), collection, item, 0);
     }
 
     delete auctions[auctionId];
@@ -287,20 +300,41 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
     AuctionData memory auctionDetails = auctions[auctionId];
 
-    if (auctionDetails.seller == address(0)) {
+    if (auctionDetails.info == 0) {
       revert INVALID_AUCTION();
     }
 
     uint256 endTime = uint256(uint64(auctionDetails.prices >> 192));
-    uint256 periods = (endTime - auctionDetails.startTime) / periodDuration;
+    uint256 startTime = uint256(uint64(auctionDetails.info >> 160));
+    uint256 periods = (endTime - startTime) / periodDuration;
     uint256 startingPrice = uint256(uint96(auctionDetails.prices));
     uint256 endingPrice = uint256(uint96(auctionDetails.prices >> 96));
     uint256 periodPrice = (startingPrice - endingPrice) / periods;
-    uint256 elapsedPeriods = (block.timestamp - deploymentOffset - auctionDetails.startTime) /
-      periodDuration;
+    uint256 elapsedPeriods = (block.timestamp - deploymentOffset - startTime) / periodDuration;
     price = startingPrice - elapsedPeriods * periodPrice;
   }
 
-  // TODO: consider admin functions to modify feeSplits, etc
+  /**
+    @notice Change fee rate, admin only.
+
+    @param _feeRate Fee percentage expressed in terms of JBConstants.SPLITS_TOTAL_PERCENT (1000000000).
+    */
+  function setFeeRate(uint256 _feeRate) external override onlyOwner {
+    if (_feeRate > feeRateCap) {
+      revert INVALID_FEERATE();
+    }
+
+    feeRate = _feeRate;
+  }
+
+  /**
+    @param _feeReceiver JBX terminal to send fees to.
+
+    @dev addToBalanceOf on the feeReceiver will be called to send fees.
+    */
+  function setFeeReceiver(IJBPaymentTerminal _feeReceiver) external override onlyOwner {
+    feeReceiver = _feeReceiver;
+  }
+
   // TODO: consider admin functions to recover eth & token balances
 }
