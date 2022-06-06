@@ -2,10 +2,10 @@
 pragma solidity 0.8.6;
 
 interface ILogPublisher {
-  event Data(bytes data);
-  event AddressedData(address indexed account, bytes data);
-  event DescribedData(bytes description, bytes data);
-  event AddressedDescribedData(address indexed account, bytes description, bytes data);
+  event Data(address source, bytes data);
+  event AddressedData(address source, address indexed account, bytes data);
+  event DescribedData(address source, bytes description, bytes data);
+  event AddressedDescribedData(address source, address indexed account, bytes description, bytes data);
 
   function publishData(bytes calldata data) external;
 
@@ -32,7 +32,7 @@ contract LogPublisher is ILogPublisher {
     @param data Bytes to publish.
    */
   function publishData(bytes calldata data) public override {
-    emit Data(data);
+    emit Data(msg.sender, data);
   }
 
   /**
@@ -44,7 +44,7 @@ contract LogPublisher is ILogPublisher {
     @param data Bytes to publish.
    */
   function publishAddressedData(address account, bytes calldata data) public override {
-    emit AddressedData(account, data);
+    emit AddressedData(msg.sender, account, data);
   }
 
   /**
@@ -56,7 +56,7 @@ contract LogPublisher is ILogPublisher {
     @param data Bytes to publish.
    */
   function publishDescribedData(bytes calldata description, bytes calldata data) public override {
-    emit DescribedData(description, data);
+    emit DescribedData(msg.sender, description, data);
   }
 
   /**
@@ -74,6 +74,6 @@ contract LogPublisher is ILogPublisher {
     bytes calldata description,
     bytes calldata data
   ) public override {
-    emit AddressedDescribedData(account, description, data);
+    emit AddressedDescribedData(msg.sender, account, description, data);
   }
 }
