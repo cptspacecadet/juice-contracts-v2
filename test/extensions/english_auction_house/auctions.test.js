@@ -12,6 +12,8 @@ describe('EnglishAuctionHouse tests', () => {
   const tokenId = 1;
   const auctionDuration = 60 * 60;
   const feeRate = 5_000_000; // 0.5%
+  const feeDenominator = 1_000_000_000;
+  const allowPublicAuctions = false;
 
   async function setup() {
     let [deployer, tokenOwner, ...accounts] = await ethers.getSigners();
@@ -36,6 +38,7 @@ describe('EnglishAuctionHouse tests', () => {
         projectId,
         feeReceiverTerminal.address,
         feeRate,
+        allowPublicAuctions,
         deployer.address,
         directory.address
       );
@@ -49,7 +52,8 @@ describe('EnglishAuctionHouse tests', () => {
       accounts,
       tokenOwner,
       englishAuctionHouse,
-      token
+      token,
+      feeReceiverTerminal
     };
   }
 
@@ -207,7 +211,7 @@ describe('EnglishAuctionHouse tests', () => {
   });
 
   it(`settle() success: sale`, async () => {
-    const { accounts, englishAuctionHouse, token, tokenOwner } = await setup();
+    const { accounts, englishAuctionHouse, token, tokenOwner, feeReceiverTerminal } = await setup();
 
     await create(token, englishAuctionHouse, tokenOwner);
     await englishAuctionHouse.connect(accounts[0]).bid(token.address, tokenId, '', { value: reservePrice });
@@ -215,11 +219,15 @@ describe('EnglishAuctionHouse tests', () => {
     await network.provider.send("evm_increaseTime", [auctionDuration + 1]);
     await network.provider.send("evm_mine");
 
-    await expect(
-      englishAuctionHouse
-        .connect(accounts[1])
-        .settle(token.address, tokenId, '')
-    ).to.emit(englishAuctionHouse, 'ConcludeAuction').withArgs(tokenOwner.address, accounts[0].address, token.address, tokenId, reservePrice, '');
+    const expectedFee = reservePrice.mul(feeRate).div(feeDenominator);
+    const expectedProceeds = reservePrice.sub(expectedFee);
+
+    const tx = englishAuctionHouse.connect(accounts[1]).settle(token.address, tokenId, '');
+    await expect(tx)
+      .to.emit(englishAuctionHouse, 'ConcludeAuction')
+      .withArgs(tokenOwner.address, accounts[0].address, token.address, tokenId, reservePrice, '');
+    await expect(await tx)
+      .to.changeEtherBalances([tokenOwner, feeReceiverTerminal], [expectedProceeds, expectedFee]);
   });
 
   it(`settle() success: return`, async () => {

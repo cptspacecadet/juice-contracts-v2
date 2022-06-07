@@ -71,7 +71,7 @@ struct AuctionData {
 }
 
 contract EnglishAuctionHouse is AccessControl, Ownable, ReentrancyGuard, IEnglishAuctionHouse {
-  bytes32 public constant PROJECT_AUCTIONEER_ROLE = keccak256('PROJECT_AUCTIONEER_ROLE');
+  bytes32 public constant PROJECT_SELLER_ROLE = keccak256('PROJECT_SELLER_ROLE');
 
   //*********************************************************************//
   // --------------------------- custom errors ------------------------- //
@@ -84,6 +84,7 @@ contract EnglishAuctionHouse is AccessControl, Ownable, ReentrancyGuard, IEnglis
   error INVALID_BID();
   error INVALID_PRICE();
   error INVALID_FEERATE();
+  error NOT_AUTHORIZED();
 
   /**
     @notice Fee rate cap set to 10%.
@@ -168,6 +169,10 @@ contract EnglishAuctionHouse is AccessControl, Ownable, ReentrancyGuard, IEnglis
     JBSplit[] calldata saleSplits,
     string calldata _memo
   ) external override nonReentrant {
+    if (getBoolean(settings, 32) && !hasRole(PROJECT_SELLER_ROLE, msg.sender)) {
+      revert NOT_AUTHORIZED();
+    }
+
     bytes32 auctionId = keccak256(abi.encodePacked(address(collection), item));
     AuctionData memory auctionDetails = auctions[auctionId];
 
