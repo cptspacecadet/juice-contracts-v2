@@ -54,15 +54,15 @@ interface IEnglishAuctionHouse {
     string calldata _memo
   ) external;
 
-  function setFeeRate(uint256 _feeRate) external;
+  function setFeeRate(uint256) external;
 
-  function setFeeReceiver(IJBPaymentTerminal _feeReceiver) external;
+  function setAllowPublicAuctions(bool) external;
 
-  function setFeeReceiver(bool _allowPublicAuctions) external;
+  function setFeeReceiver(IJBPaymentTerminal) external;
 
-  function addAuthorizedSeller(address _seller) external;
+  function addAuthorizedSeller(address) external;
 
-  function removeAuthorizedSeller(address _seller) external;
+  function removeAuthorizedSeller(address) external;
 }
 
 struct AuctionData {
@@ -71,7 +71,12 @@ struct AuctionData {
   uint256 bid;
 }
 
-contract EnglishAuctionHouse is AccessControl, ReentrancyGuard, IEnglishAuctionHouse {
+contract EnglishAuctionHouse is
+  AccessControl,
+  JBSplitPayerUtil,
+  ReentrancyGuard,
+  IEnglishAuctionHouse
+{
   bytes32 public constant AUTHORIZED_SELLER_ROLE = keccak256('AUTHORIZED_SELLER_ROLE');
 
   //*********************************************************************//
@@ -335,7 +340,7 @@ contract EnglishAuctionHouse is AccessControl, ReentrancyGuard, IEnglishAuctionH
     @param _allowPublicAuctions Sets or clears the flag to enable users other than admin role to create auctions.
 
     */
-  function setFeeReceiver(bool _allowPublicAuctions)
+  function setAllowPublicAuctions(bool _allowPublicAuctions)
     external
     view
     override
@@ -365,7 +370,7 @@ contract EnglishAuctionHouse is AccessControl, ReentrancyGuard, IEnglishAuctionH
     _revokeRole(AUTHORIZED_SELLER_ROLE, _seller);
   }
 
-  // TODO: consider admin functions to recover eth & token balances, pause?
+  // TODO: consider admin functions to recover eth & token balances
 
   //*********************************************************************//
   // ------------------------------ utils ------------------------------ //
