@@ -17,17 +17,19 @@ interface IEnglishAuctionHouse {
     address seller,
     IERC721 collection,
     uint256 item,
-    uint256 startingPrice
+    uint256 startingPrice,
+    string memo
   );
 
-  event PlaceBid(address bidder, IERC721 collection, uint256 item, uint256 bidAmount);
+  event PlaceBid(address bidder, IERC721 collection, uint256 item, uint256 bidAmount, string memo);
 
   event ConcludeAuction(
     address seller,
     address bidder,
     IERC721 collection,
     uint256 item,
-    uint256 closePrice
+    uint256 closePrice,
+    string memo
   );
 
   function create(
@@ -36,12 +38,21 @@ interface IEnglishAuctionHouse {
     uint256 startingPrice,
     uint256 reservePrice,
     uint256 expiration,
-    JBSplit[] calldata saleSplits
+    JBSplit[] calldata saleSplits,
+    string calldata _memo
   ) external;
 
-  function bid(IERC721, uint256) external payable;
+  function bid(
+    IERC721,
+    uint256,
+    string calldata _memo
+  ) external payable;
 
-  function settle(IERC721 collection, uint256 item) external;
+  function settle(
+    IERC721 collection,
+    uint256 item,
+    string calldata _memo
+  ) external;
 
   function setFeeRate(uint256 _feeRate) external;
 
@@ -146,7 +157,8 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
     uint256 startingPrice,
     uint256 reservePrice,
     uint256 expiration,
-    JBSplit[] calldata saleSplits
+    JBSplit[] calldata saleSplits,
+    string calldata _memo
   ) external override nonReentrant {
     bytes32 auctionId = keccak256(abi.encodePacked(address(collection), item));
     AuctionData memory auctionDetails = auctions[auctionId];
@@ -180,7 +192,7 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
 
     collection.transferFrom(msg.sender, address(this), item);
 
-    emit CreateEnglishAuction(msg.sender, collection, item, startingPrice);
+    emit CreateEnglishAuction(msg.sender, collection, item, startingPrice, _memo);
   }
 
   /**
@@ -189,7 +201,11 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
     @param collection ERC721 contract.
     @param item Token id to bid on.
    */
-  function bid(IERC721 collection, uint256 item) external payable override nonReentrant {
+  function bid(
+    IERC721 collection,
+    uint256 item,
+    string calldata _memo
+  ) external payable override nonReentrant {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
     AuctionData memory auctionDetails = auctions[auctionId];
 
@@ -223,7 +239,7 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
 
     auctions[auctionId].bid = newBid;
 
-    emit PlaceBid(msg.sender, collection, item, msg.value);
+    emit PlaceBid(msg.sender, collection, item, msg.value, _memo);
   }
 
   /**
@@ -232,7 +248,11 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
     @param collection ERC721 contract.
     @param item Token id to settle.
    */
-  function settle(IERC721 collection, uint256 item) external override nonReentrant {
+  function settle(
+    IERC721 collection,
+    uint256 item,
+    string calldata _memo
+  ) external override nonReentrant {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
     AuctionData memory auctionDetails = auctions[auctionId];
 
@@ -250,7 +270,7 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
     if (lastBidAmount >= reservePrice) {
       uint256 balance = lastBidAmount;
       uint256 fee = PRBMath.mulDiv(balance, feeRate, JBConstants.SPLITS_TOTAL_PERCENT);
-      feeReceiver.addToBalanceOf(projectId, fee, JBTokens.ETH, '', '');
+      feeReceiver.addToBalanceOf(projectId, fee, JBTokens.ETH, _memo, '');
 
       unchecked {
         balance -= fee;
@@ -274,11 +294,11 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
 
       collection.transferFrom(address(this), buyer, item);
 
-      emit ConcludeAuction(auctionDetails.seller, buyer, collection, item, lastBidAmount);
+      emit ConcludeAuction(auctionDetails.seller, buyer, collection, item, lastBidAmount, _memo);
     } else {
       collection.transferFrom(address(this), auctionDetails.seller, item);
 
-      emit ConcludeAuction(auctionDetails.seller, address(0), collection, item, 0);
+      emit ConcludeAuction(auctionDetails.seller, address(0), collection, item, 0, _memo);
     }
 
     delete auctions[auctionId];

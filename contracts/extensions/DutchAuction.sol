@@ -13,16 +13,23 @@ import '../structs/JBSplit.sol';
 import './JBSplitPayerUtil.sol';
 
 interface IDutchAuctionHouse {
-  event CreateDutchAuction(address seller, IERC721 collection, uint256 item, uint256 startingPrice);
+  event CreateDutchAuction(
+    address seller,
+    IERC721 collection,
+    uint256 item,
+    uint256 startingPrice,
+    string memo
+  );
 
-  event PlaceBid(address bidder, IERC721 collection, uint256 item, uint256 bidAmount);
+  event PlaceBid(address bidder, IERC721 collection, uint256 item, uint256 bidAmount, string memo);
 
   event ConcludeAuction(
     address seller,
     address bidder,
     IERC721 collection,
     uint256 item,
-    uint256 closePrice
+    uint256 closePrice,
+    string memo
   );
 
   function create(
@@ -31,18 +38,27 @@ interface IDutchAuctionHouse {
     uint256 startingPrice,
     uint256 endingPrice,
     uint256 expiration,
-    JBSplit[] calldata saleSplits
+    JBSplit[] calldata saleSplits,
+    string calldata
   ) external;
 
-  function bid(IERC721, uint256) external payable;
+  function bid(
+    IERC721 collection,
+    uint256 item,
+    string calldata memo
+  ) external payable;
 
-  function settle(IERC721 collection, uint256 item) external;
+  function settle(
+    IERC721 collection,
+    uint256 item,
+    string calldata memo
+  ) external;
 
   function currentPrice(IERC721 collection, uint256 item) external view returns (uint256 price);
 
-  function setFeeRate(uint256 _feeRate) external;
+  function setFeeRate(uint256) external;
 
-  function setFeeReceiver(IJBPaymentTerminal _feeReceiver) external;
+  function setFeeReceiver(IJBPaymentTerminal) external;
 }
 
 struct AuctionData {
@@ -146,7 +162,8 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
     uint256 startingPrice,
     uint256 endingPrice,
     uint256 expiration,
-    JBSplit[] calldata saleSplits
+    JBSplit[] calldata saleSplits,
+    string calldata _memo
   ) external override nonReentrant {
     bytes32 auctionId = keccak256(abi.encodePacked(address(collection), item));
     AuctionData memory auctionDetails = auctions[auctionId];
@@ -163,14 +180,17 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
       revert INVALID_PRICE();
     }
 
-    uint256 auctionInfo = uint256(uint160(msg.sender));
-    auctionInfo |= uint256(uint64(block.timestamp - deploymentOffset)) << 160;
+    {
+      // scope to reduce stack depth
+      uint256 auctionInfo = uint256(uint160(msg.sender));
+      auctionInfo |= uint256(uint64(block.timestamp - deploymentOffset)) << 160;
 
-    uint256 auctionPrices = uint256(uint96(startingPrice));
-    auctionPrices |= uint256(uint96(endingPrice)) << 96;
-    auctionPrices |= uint256(uint64(expiration)) << 192;
+      uint256 auctionPrices = uint256(uint96(startingPrice));
+      auctionPrices |= uint256(uint96(endingPrice)) << 96;
+      auctionPrices |= uint256(uint64(expiration)) << 192;
 
-    auctions[auctionId] = AuctionData(auctionInfo, auctionPrices, 0);
+      auctions[auctionId] = AuctionData(auctionInfo, auctionPrices, 0);
+    }
 
     uint256 length = saleSplits.length;
     for (uint256 i = 0; i < length; i += 1) {
@@ -179,7 +199,7 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
 
     collection.transferFrom(msg.sender, address(this), item);
 
-    emit CreateDutchAuction(msg.sender, collection, item, startingPrice);
+    emit CreateDutchAuction(msg.sender, collection, item, startingPrice, _memo);
   }
 
   /**
@@ -188,7 +208,11 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
     @param collection ERC721 contract.
     @param item Token id to bid on.
    */
-  function bid(IERC721 collection, uint256 item) external payable override nonReentrant {
+  function bid(
+    IERC721 collection,
+    uint256 item,
+    string calldata _memo
+  ) external payable override nonReentrant {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
     AuctionData memory auctionDetails = auctions[auctionId];
 
@@ -222,7 +246,7 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
 
     auctions[auctionId].bid = newBid;
 
-    emit PlaceBid(msg.sender, collection, item, msg.value);
+    emit PlaceBid(msg.sender, collection, item, msg.value, _memo);
   }
 
   /**
@@ -231,7 +255,11 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
     @param collection ERC721 contract.
     @param item Token id to settle.
    */
-  function settle(IERC721 collection, uint256 item) external override nonReentrant {
+  function settle(
+    IERC721 collection,
+    uint256 item,
+    string calldata _memo
+  ) external override nonReentrant {
     bytes32 auctionId = keccak256(abi.encodePacked(collection, item));
     AuctionData memory auctionDetails = auctions[auctionId];
 
@@ -241,48 +269,59 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
 
     uint256 lastBidAmount = uint256(uint96(auctionDetails.bid >> 160));
     uint256 minSettlePrice = currentPrice(collection, item);
-    if (lastBidAmount >= minSettlePrice) {
-      uint256 balance = lastBidAmount;
-      uint256 fee = PRBMath.mulDiv(balance, feeRate, JBConstants.SPLITS_TOTAL_PERCENT);
-      feeReceiver.addToBalanceOf(projectId, fee, JBTokens.ETH, '', '');
 
-      unchecked {
-        balance -= fee;
-      }
-
-      if (auctionSplits[auctionId].length > 0) {
-        balance = JBSplitPayerUtil.payToSplits(
-          auctionSplits[auctionId],
-          balance,
-          JBTokens.ETH,
-          18,
-          directory,
-          0,
-          payable(address(0))
-        );
-      } else {
-        payable(address(uint160(auctionDetails.info))).transfer(balance);
-      }
-
-      address buyer = address(uint160(auctionDetails.bid));
-
-      collection.transferFrom(address(this), buyer, item);
+    if (lastBidAmount < minSettlePrice) {
+      collection.transferFrom(address(this), address(uint160(auctionDetails.info)), item);
 
       emit ConcludeAuction(
         address(uint160(auctionDetails.info)),
-        buyer,
+        address(0),
         collection,
         item,
-        lastBidAmount
+        0,
+        _memo
       );
-    } else {
-      collection.transferFrom(address(this), address(uint160(auctionDetails.info)), item);
 
-      emit ConcludeAuction(address(uint160(auctionDetails.info)), address(0), collection, item, 0);
+      delete auctions[auctionId];
+      delete auctionSplits[auctionId];
+
+      return;
     }
 
-    delete auctions[auctionId];
-    delete auctionSplits[auctionId];
+    uint256 balance = lastBidAmount;
+    uint256 fee = PRBMath.mulDiv(balance, feeRate, JBConstants.SPLITS_TOTAL_PERCENT);
+    feeReceiver.addToBalanceOf(projectId, fee, JBTokens.ETH, _memo, '');
+
+    unchecked {
+      balance -= fee;
+    }
+
+    if (auctionSplits[auctionId].length > 0) {
+      balance = JBSplitPayerUtil.payToSplits(
+        auctionSplits[auctionId],
+        balance,
+        JBTokens.ETH,
+        18,
+        directory,
+        0,
+        payable(address(0))
+      );
+    } else {
+      payable(address(uint160(auctionDetails.info))).transfer(balance);
+    }
+
+    address buyer = address(uint160(auctionDetails.bid));
+
+    collection.transferFrom(address(this), buyer, item);
+
+    emit ConcludeAuction(
+      address(uint160(auctionDetails.info)),
+      buyer,
+      collection,
+      item,
+      lastBidAmount,
+      _memo
+    );
   }
 
   /**
