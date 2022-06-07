@@ -2,7 +2,6 @@
 pragma solidity 0.8.6;
 
 import '@openzeppelin/contracts/access/AccessControl.sol';
-import '@openzeppelin/contracts/access/Ownable.sol';
 import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
 import '@openzeppelin/contracts/token/ERC721/IERC721.sol';
 
@@ -62,6 +61,8 @@ interface IEnglishAuctionHouse {
   function setFeeReceiver(bool _allowPublicAuctions) external;
 
   function addAuthorizedSeller(address _seller) external;
+
+  function removeAuthorizedSeller(address _seller) external;
 }
 
 struct AuctionData {
@@ -70,8 +71,8 @@ struct AuctionData {
   uint256 bid;
 }
 
-contract EnglishAuctionHouse is AccessControl, Ownable, ReentrancyGuard, IEnglishAuctionHouse {
-  bytes32 public constant PROJECT_SELLER_ROLE = keccak256('PROJECT_SELLER_ROLE');
+contract EnglishAuctionHouse is AccessControl, ReentrancyGuard, IEnglishAuctionHouse {
+  bytes32 public constant AUTHORIZED_SELLER_ROLE = keccak256('AUTHORIZED_SELLER_ROLE');
 
   //*********************************************************************//
   // --------------------------- custom errors ------------------------- //
@@ -133,7 +134,7 @@ contract EnglishAuctionHouse is AccessControl, Ownable, ReentrancyGuard, IEnglis
     bool _allowPublicAuctions,
     address _owner,
     IJBDirectory _directory
-  ) Ownable() {
+  ) {
     deploymentOffset = block.timestamp;
 
     projectId = _projectId;
@@ -141,9 +142,8 @@ contract EnglishAuctionHouse is AccessControl, Ownable, ReentrancyGuard, IEnglis
     settings = setBoolean(_feeRate, 32, _allowPublicAuctions);
     directory = _directory;
 
-    if (msg.sender != _owner) {
-      transferOwnership(_owner);
-    }
+    _grantRole(DEFAULT_ADMIN_ROLE, _owner);
+    _grantRole(AUTHORIZED_SELLER_ROLE, _owner);
   }
 
   /**
@@ -169,7 +169,7 @@ contract EnglishAuctionHouse is AccessControl, Ownable, ReentrancyGuard, IEnglis
     JBSplit[] calldata saleSplits,
     string calldata _memo
   ) external override nonReentrant {
-    if (getBoolean(settings, 32) && !hasRole(PROJECT_SELLER_ROLE, msg.sender)) {
+    if (getBoolean(settings, 32) && !hasRole(AUTHORIZED_SELLER_ROLE, msg.sender)) {
       revert NOT_AUTHORIZED();
     }
 
@@ -323,7 +323,7 @@ contract EnglishAuctionHouse is AccessControl, Ownable, ReentrancyGuard, IEnglis
 
     @param _feeRate Fee percentage expressed in terms of JBConstants.SPLITS_TOTAL_PERCENT (1000000000).
     */
-  function setFeeRate(uint256 _feeRate) external override onlyOwner {
+  function setFeeRate(uint256 _feeRate) external override onlyRole(DEFAULT_ADMIN_ROLE) {
     if (_feeRate > FEE_RATE_CAP) {
       revert INVALID_FEERATE();
     }
@@ -335,7 +335,12 @@ contract EnglishAuctionHouse is AccessControl, Ownable, ReentrancyGuard, IEnglis
     @param _allowPublicAuctions Sets or clears the flag to enable users other than admin role to create auctions.
 
     */
-  function setFeeReceiver(bool _allowPublicAuctions) external view override onlyOwner {
+  function setFeeReceiver(bool _allowPublicAuctions)
+    external
+    view
+    override
+    onlyRole(DEFAULT_ADMIN_ROLE)
+  {
     setBoolean(settings, 32, _allowPublicAuctions);
   }
 
@@ -344,11 +349,21 @@ contract EnglishAuctionHouse is AccessControl, Ownable, ReentrancyGuard, IEnglis
 
     @dev addToBalanceOf on the feeReceiver will be called to send fees.
     */
-  function setFeeReceiver(IJBPaymentTerminal _feeReceiver) external override onlyOwner {
+  function setFeeReceiver(IJBPaymentTerminal _feeReceiver)
+    external
+    override
+    onlyRole(DEFAULT_ADMIN_ROLE)
+  {
     feeReceiver = _feeReceiver;
   }
 
-  function addAuthorizedSeller(address _seller) external override onlyOwner {}
+  function addAuthorizedSeller(address _seller) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    _grantRole(AUTHORIZED_SELLER_ROLE, _seller);
+  }
+
+  function removeAuthorizedSeller(address _seller) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    _revokeRole(AUTHORIZED_SELLER_ROLE, _seller);
+  }
 
   // TODO: consider admin functions to recover eth & token balances, pause?
 
