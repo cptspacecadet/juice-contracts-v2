@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.6;
 
+import '@openzeppelin/contracts/access/AccessControl.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
 import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
 import '@openzeppelin/contracts/token/ERC721/IERC721.sol';
@@ -57,6 +58,10 @@ interface IEnglishAuctionHouse {
   function setFeeRate(uint256 _feeRate) external;
 
   function setFeeReceiver(IJBPaymentTerminal _feeReceiver) external;
+
+  function setFeeReceiver(bool _allowPublicAuctions) external;
+
+  function addAuthorizedSeller(address _seller) external;
 }
 
 struct AuctionData {
@@ -65,7 +70,9 @@ struct AuctionData {
   uint256 bid;
 }
 
-contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
+contract EnglishAuctionHouse is AccessControl, Ownable, ReentrancyGuard, IEnglishAuctionHouse {
+  bytes32 public constant PROJECT_AUCTIONEER_ROLE = keccak256('PROJECT_AUCTIONEER_ROLE');
+
   //*********************************************************************//
   // --------------------------- custom errors ------------------------- //
   //*********************************************************************//
@@ -81,7 +88,7 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
   /**
     @notice Fee rate cap set to 10%.
    */
-  uint256 public constant feeRateCap = 100000000;
+  uint256 public constant FEE_RATE_CAP = 100000000;
 
   //*********************************************************************//
   // --------------------- public stored properties -------------------- //
@@ -93,7 +100,7 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
   mapping(bytes32 => AuctionData) public auctions;
 
   /**
-    @notice Jukebox splits for active auctions.
+    @notice Juicebox splits for active auctions.
    */
   mapping(bytes32 => JBSplit[]) public auctionSplits;
 
@@ -104,8 +111,8 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
 
   uint256 public immutable projectId;
   IJBPaymentTerminal public feeReceiver;
-  uint256 public feeRate;
   IJBDirectory public directory;
+  uint256 public settings; // allowPublicAuctions(bool), feeRate (32)
 
   /**
    @notice
@@ -122,6 +129,7 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
     uint256 _projectId,
     IJBPaymentTerminal _feeReceiver,
     uint256 _feeRate,
+    bool _allowPublicAuctions,
     address _owner,
     IJBDirectory _directory
   ) Ownable() {
@@ -129,7 +137,7 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
 
     projectId = _projectId;
     feeReceiver = _feeReceiver;
-    feeRate = _feeRate;
+    settings = setBoolean(_feeRate, 32, _allowPublicAuctions);
     directory = _directory;
 
     if (msg.sender != _owner) {
@@ -149,7 +157,7 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
     @param startingPrice Minimum auction price. 0 is a valid price.
     @param reservePrice Reserve price at which the item will be sold once the auction expires. Below this price, the item will be returned to the seller.
     @param expiration Seconds, offset from deploymentOffset, at which the auction concludes.
-    @param saleSplits Jukebox splits collection that will receive auction proceeds.
+    @param saleSplits Juicebox splits collection that will receive auction proceeds.
    */
   function create(
     IERC721 collection,
@@ -269,8 +277,8 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
     uint256 reservePrice = uint256(uint96(auctionDetails.prices >> 96));
     if (lastBidAmount >= reservePrice) {
       uint256 balance = lastBidAmount;
-      uint256 fee = PRBMath.mulDiv(balance, feeRate, JBConstants.SPLITS_TOTAL_PERCENT);
-      feeReceiver.addToBalanceOf(projectId, fee, JBTokens.ETH, _memo, '');
+      uint256 fee = PRBMath.mulDiv(balance, uint32(settings), JBConstants.SPLITS_TOTAL_PERCENT);
+      feeReceiver.addToBalanceOf{value: fee}(projectId, fee, JBTokens.ETH, _memo, '');
 
       unchecked {
         balance -= fee;
@@ -311,11 +319,19 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
     @param _feeRate Fee percentage expressed in terms of JBConstants.SPLITS_TOTAL_PERCENT (1000000000).
     */
   function setFeeRate(uint256 _feeRate) external override onlyOwner {
-    if (_feeRate > feeRateCap) {
+    if (_feeRate > FEE_RATE_CAP) {
       revert INVALID_FEERATE();
     }
 
-    feeRate = _feeRate;
+    settings |= uint256(uint32(_feeRate));
+  }
+
+  /**
+    @param _allowPublicAuctions Sets or clears the flag to enable users other than admin role to create auctions.
+
+    */
+  function setFeeReceiver(bool _allowPublicAuctions) external view override onlyOwner {
+    setBoolean(settings, 32, _allowPublicAuctions);
   }
 
   /**
@@ -327,5 +343,28 @@ contract EnglishAuctionHouse is Ownable, IEnglishAuctionHouse, ReentrancyGuard {
     feeReceiver = _feeReceiver;
   }
 
+  function addAuthorizedSeller(address _seller) external override onlyOwner {}
+
   // TODO: consider admin functions to recover eth & token balances, pause?
+
+  //*********************************************************************//
+  // ------------------------------ utils ------------------------------ //
+  //*********************************************************************//
+
+  function getBoolean(uint256 _source, uint256 _index) internal pure returns (bool) {
+    uint256 flag = (_source >> _index) & uint256(1);
+    return (flag == 1 ? true : false);
+  }
+
+  function setBoolean(
+    uint256 _source,
+    uint256 _index,
+    bool _value
+  ) internal pure returns (uint256 update) {
+    if (_value) {
+      update = _source | (uint256(1) << _index);
+    } else {
+      update = _source & ~(uint256(1) << _index);
+    }
+  }
 }
