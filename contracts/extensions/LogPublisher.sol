@@ -2,10 +2,15 @@
 pragma solidity 0.8.6;
 
 interface ILogPublisher {
-  event Data(address source, bytes data);
-  event AddressedData(address source, address indexed account, bytes data);
-  event DescribedData(address source, bytes description, bytes data);
-  event AddressedDescribedData(address source, address indexed account, bytes description, bytes data);
+  event Data(address indexed source, bytes data);
+  event AddressedData(address indexed source, address indexed account, bytes data);
+  event DescribedData(address indexed source, bytes description, bytes data);
+  event AddressedDescribedData(
+    address indexed source,
+    address indexed account,
+    bytes description,
+    bytes data
+  );
 
   function publishData(bytes calldata data) external;
 
