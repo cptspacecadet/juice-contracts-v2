@@ -13,7 +13,7 @@ import '../interfaces/IJBSplitsStore.sol';
 import '../libraries/JBConstants.sol';
 import '../libraries/JBTokens.sol';
 
-library JBSplitPayerUtil {
+abstract contract JBSplitPayerUtil {
   event DistributeToSplit(
     uint256 indexed projectId,
     uint256 indexed domain,
@@ -38,7 +38,7 @@ library JBSplitPayerUtil {
     IJBDirectory _directory,
     uint256 defaultProjectId,
     address payable _defaultBeneficiary
-  ) public returns (uint256 leftoverAmount) {
+  ) public payable returns (uint256 leftoverAmount) {
     // Set the leftover amount to the initial balance.
     leftoverAmount = _amount;
 
@@ -80,9 +80,9 @@ library JBSplitPayerUtil {
 
           // Otherwise, if a project is specified, make a payment to it.
         } else if (_split.projectId != 0) {
-          if (_split.preferAddToBalance)
+          if (_split.preferAddToBalance) {
             _addToBalanceOf(_directory, _split.projectId, _token, _splitAmount, _decimals, '', '');
-          else
+          } else {
             _pay(
               _directory,
               _split.projectId,
@@ -95,6 +95,7 @@ library JBSplitPayerUtil {
               '',
               ''
             );
+          }
         } else {
           // Transfer the ETH.
           if (_token == JBTokens.ETH)
