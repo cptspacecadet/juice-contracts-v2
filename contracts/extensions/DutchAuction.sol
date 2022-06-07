@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.6;
 
-import '@openzeppelin/contracts/access/Ownable.sol';
+import '@openzeppelin/contracts/access/AccessControl.sol';
 import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
 import '@openzeppelin/contracts/token/ERC721/IERC721.sol';
 
@@ -45,20 +45,26 @@ interface IDutchAuctionHouse {
   function bid(
     IERC721 collection,
     uint256 item,
-    string calldata memo
+    string calldata _memo
   ) external payable;
 
   function settle(
     IERC721 collection,
     uint256 item,
-    string calldata memo
+    string calldata _memo
   ) external;
 
   function currentPrice(IERC721 collection, uint256 item) external view returns (uint256 price);
 
   function setFeeRate(uint256) external;
 
+  function setAllowPublicAuctions(bool) external;
+
   function setFeeReceiver(IJBPaymentTerminal) external;
+
+  function addAuthorizedSeller(address) external;
+
+  function removeAuthorizedSeller(address) external;
 }
 
 struct AuctionData {
@@ -67,7 +73,8 @@ struct AuctionData {
   uint256 bid;
 }
 
-contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
+contract DutchAuctionHouse is AccessControl, JBSplitPayerUtil, ReentrancyGuard, IDutchAuctionHouse {
+  bytes32 public constant AUTHORIZED_SELLER_ROLE = keccak256('AUTHORIZED_SELLER_ROLE');
   //*********************************************************************//
   // --------------------------- custom errors ------------------------- //
   //*********************************************************************//
@@ -78,11 +85,12 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
   error INVALID_BID();
   error INVALID_PRICE();
   error INVALID_FEERATE();
+  error NOT_AUTHORIZED();
 
   /**
     @notice Fee rate cap set to 10%.
    */
-  uint256 public constant feeRateCap = 100000000;
+  uint256 public constant FEE_RATE_CAP = 100000000;
 
   //*********************************************************************//
   // --------------------- public stored properties -------------------- //
@@ -94,7 +102,7 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
   mapping(bytes32 => AuctionData) public auctions;
 
   /**
-    @notice Jukebox splits for active auctions.
+    @notice Juicebox splits for active auctions.
    */
   mapping(bytes32 => JBSplit[]) public auctionSplits;
 
@@ -105,9 +113,8 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
 
   uint256 public immutable projectId;
   IJBPaymentTerminal public feeReceiver;
-  uint256 public feeRate;
   IJBDirectory public directory;
-  uint256 public periodDuration;
+  uint256 public settings; // periodDuration(64), allowPublicAuctions(bool), feeRate (32)
 
   /**
     @notice
@@ -125,21 +132,21 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
     uint256 _projectId,
     IJBPaymentTerminal _feeReceiver,
     uint256 _feeRate,
+    bool _allowPublicAuctions,
     uint256 _periodDuration,
     address _owner,
     IJBDirectory _directory
-  ) Ownable() {
+  ) {
     deploymentOffset = block.timestamp;
 
     projectId = _projectId;
     feeReceiver = _feeReceiver;
-    feeRate = _feeRate;
-    periodDuration = _periodDuration;
+    settings = setBoolean(_feeRate, 32, _allowPublicAuctions);
+    settings |= uint256(uint64(_periodDuration)) << 33;
     directory = _directory;
 
-    if (msg.sender != _owner) {
-      transferOwnership(_owner);
-    }
+    _grantRole(DEFAULT_ADMIN_ROLE, _owner);
+    _grantRole(AUTHORIZED_SELLER_ROLE, _owner);
   }
 
   /**
@@ -154,7 +161,7 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
     @param startingPrice Starting price for the auction from which it will drop.
     @param endingPrice Minimum pride for the auction at which it will end at exipration time.
     @param expiration Seconds, offset from deploymentOffset, at which the auction concludes.
-    @param saleSplits Jukebox splits collection that will receive auction proceeds.
+    @param saleSplits Juicebox splits collection that will receive auction proceeds.
    */
   function create(
     IERC721 collection,
@@ -165,6 +172,10 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
     JBSplit[] calldata saleSplits,
     string calldata _memo
   ) external override nonReentrant {
+    if (getBoolean(settings, 32) && !hasRole(AUTHORIZED_SELLER_ROLE, msg.sender)) {
+      revert NOT_AUTHORIZED();
+    }
+
     bytes32 auctionId = keccak256(abi.encodePacked(address(collection), item));
     AuctionData memory auctionDetails = auctions[auctionId];
 
@@ -289,8 +300,8 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
     }
 
     uint256 balance = lastBidAmount;
-    uint256 fee = PRBMath.mulDiv(balance, feeRate, JBConstants.SPLITS_TOTAL_PERCENT);
-    feeReceiver.addToBalanceOf(projectId, fee, JBTokens.ETH, _memo, '');
+    uint256 fee = PRBMath.mulDiv(balance, uint32(settings), JBConstants.SPLITS_TOTAL_PERCENT);
+    feeReceiver.addToBalanceOf{value: fee}(projectId, fee, JBTokens.ETH, _memo, '');
 
     unchecked {
       balance -= fee;
@@ -345,11 +356,12 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
 
     uint256 endTime = uint256(uint64(auctionDetails.prices >> 192));
     uint256 startTime = uint256(uint64(auctionDetails.info >> 160));
-    uint256 periods = (endTime - startTime) / periodDuration;
+    uint256 periods = (endTime - startTime) / uint64(uint256(settings) >> 33);
     uint256 startingPrice = uint256(uint96(auctionDetails.prices));
     uint256 endingPrice = uint256(uint96(auctionDetails.prices >> 96));
     uint256 periodPrice = (startingPrice - endingPrice) / periods;
-    uint256 elapsedPeriods = (block.timestamp - deploymentOffset - startTime) / periodDuration;
+    uint256 elapsedPeriods = (block.timestamp - deploymentOffset - startTime) /
+      uint64(uint256(settings) >> 33);
     price = startingPrice - elapsedPeriods * periodPrice;
   }
 
@@ -358,12 +370,25 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
 
     @param _feeRate Fee percentage expressed in terms of JBConstants.SPLITS_TOTAL_PERCENT (1000000000).
     */
-  function setFeeRate(uint256 _feeRate) external override onlyOwner {
-    if (_feeRate > feeRateCap) {
+  function setFeeRate(uint256 _feeRate) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    if (_feeRate > FEE_RATE_CAP) {
       revert INVALID_FEERATE();
     }
 
-    feeRate = _feeRate;
+    settings |= uint256(uint32(_feeRate));
+  }
+
+  /**
+    @param _allowPublicAuctions Sets or clears the flag to enable users other than admin role to create auctions.
+
+    */
+  function setAllowPublicAuctions(bool _allowPublicAuctions)
+    external
+    view
+    override
+    onlyRole(DEFAULT_ADMIN_ROLE)
+  {
+    setBoolean(settings, 32, _allowPublicAuctions);
   }
 
   /**
@@ -371,9 +396,42 @@ contract DutchAuctionHouse is IDutchAuctionHouse, Ownable, ReentrancyGuard {
 
     @dev addToBalanceOf on the feeReceiver will be called to send fees.
     */
-  function setFeeReceiver(IJBPaymentTerminal _feeReceiver) external override onlyOwner {
+  function setFeeReceiver(IJBPaymentTerminal _feeReceiver)
+    external
+    override
+    onlyRole(DEFAULT_ADMIN_ROLE)
+  {
     feeReceiver = _feeReceiver;
   }
 
+  function addAuthorizedSeller(address _seller) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    _grantRole(AUTHORIZED_SELLER_ROLE, _seller);
+  }
+
+  function removeAuthorizedSeller(address _seller) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    _revokeRole(AUTHORIZED_SELLER_ROLE, _seller);
+  }
+
   // TODO: consider admin functions to recover eth & token balances
+
+  //*********************************************************************//
+  // ------------------------------ utils ------------------------------ //
+  //*********************************************************************//
+
+  function getBoolean(uint256 _source, uint256 _index) internal pure returns (bool) {
+    uint256 flag = (_source >> _index) & uint256(1);
+    return (flag == 1 ? true : false);
+  }
+
+  function setBoolean(
+    uint256 _source,
+    uint256 _index,
+    bool _value
+  ) internal pure returns (uint256 update) {
+    if (_value) {
+      update = _source | (uint256(1) << _index);
+    } else {
+      update = _source & ~(uint256(1) << _index);
+    }
+  }
 }
