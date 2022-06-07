@@ -24,13 +24,7 @@ describe('EnglishAuctionHouse tests', () => {
     await feeReceiverTerminal.mock.addToBalanceOf.returns();
     await directory.mock.isTerminalOf.withArgs(projectId, feeReceiverTerminal.address).returns(true);
 
-    const jbSplitPayerUtilFactory = await ethers.getContractFactory('JBSplitPayerUtil', deployer);
-    const jbSplitPayerUtil = await jbSplitPayerUtilFactory.connect(deployer).deploy();
-
-    const englishAuctionHouseFactory = await ethers.getContractFactory('EnglishAuctionHouse', {
-      libraries: { JBSplitPayerUtil: jbSplitPayerUtil.address },
-      signer: deployer
-    });
+    const englishAuctionHouseFactory = await ethers.getContractFactory('EnglishAuctionHouse', { signer: deployer });
 
     const englishAuctionHouse = await englishAuctionHouseFactory
       .connect(deployer)
