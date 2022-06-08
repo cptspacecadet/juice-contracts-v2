@@ -41,13 +41,35 @@ describe('EnglishAuctionHouse tests', () => {
     const token = await tokenFactory.connect(deployer).deploy();
     await token.connect(deployer).mint(tokenOwner.address, tokenId);
 
+    const splits = [
+      {
+        preferClaimed: true,
+        preferAddToBalance: true,
+        percent: 500_000_000,
+        projectId: 0,
+        beneficiary: accounts[2].address,
+        lockedUntil: 0,
+        allocator: ethers.constants.AddressZero
+      },
+      {
+        preferClaimed: true,
+        preferAddToBalance: true,
+        percent: 500_000_000,
+        projectId: 0,
+        beneficiary: accounts[3].address,
+        lockedUntil: 0,
+        allocator: ethers.constants.AddressZero
+      }
+    ];
+
     return {
       deployer,
       accounts,
       tokenOwner,
       englishAuctionHouse,
       token,
-      feeReceiverTerminal
+      feeReceiverTerminal,
+      splits
     };
   }
 
@@ -234,6 +256,27 @@ describe('EnglishAuctionHouse tests', () => {
       .withArgs(tokenOwner.address, accounts[0].address, token.address, tokenId, reservePrice, '');
     await expect(await tx)
       .to.changeEtherBalances([tokenOwner, feeReceiverTerminal], [expectedProceeds, expectedFee]);
+  });
+
+  it(`settle() success: split payments`, async () => {
+    const { accounts, englishAuctionHouse, splits, token, tokenOwner, feeReceiverTerminal } = await setup();
+
+    await token.connect(tokenOwner).approve(englishAuctionHouse.address, tokenId);
+    await englishAuctionHouse.connect(tokenOwner).create(token.address, tokenId, basePrice, reservePrice, auctionDuration, splits, '');
+    await englishAuctionHouse.connect(accounts[0]).bid(token.address, tokenId, '', { value: reservePrice });
+
+    await network.provider.send("evm_increaseTime", [auctionDuration + 1]);
+    await network.provider.send("evm_mine");
+
+    const expectedFee = reservePrice.mul(feeRate).div(feeDenominator);
+    const expectedProceeds = reservePrice.sub(expectedFee).div(2);
+
+    const tx = englishAuctionHouse.connect(accounts[1]).settle(token.address, tokenId, '');
+    await expect(tx)
+      .to.emit(englishAuctionHouse, 'ConcludeAuction')
+      .withArgs(tokenOwner.address, accounts[0].address, token.address, tokenId, reservePrice, '');
+    await expect(await tx)
+      .to.changeEtherBalances([tokenOwner, feeReceiverTerminal, accounts[2], accounts[3]], [0, expectedFee, expectedProceeds, expectedProceeds]);
   });
 
   it(`settle() success: return`, async () => {
