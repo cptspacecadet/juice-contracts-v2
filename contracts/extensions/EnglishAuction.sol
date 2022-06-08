@@ -295,7 +295,7 @@ contract EnglishAuctionHouse is
       }
 
       if (auctionSplits[auctionId].length > 0) {
-        balance = JBSplitPayerUtil.payToSplits(
+        balance = payToSplits(
           auctionSplits[auctionId],
           balance,
           JBTokens.ETH,

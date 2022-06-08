@@ -38,7 +38,7 @@ abstract contract JBSplitPayerUtil {
     IJBDirectory _directory,
     uint256 defaultProjectId,
     address payable _defaultBeneficiary
-  ) public payable returns (uint256 leftoverAmount) {
+  ) public returns (uint256 leftoverAmount) {
     // Set the leftover amount to the initial balance.
     leftoverAmount = _amount;
 
