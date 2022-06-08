@@ -172,7 +172,7 @@ contract DutchAuctionHouse is AccessControl, JBSplitPayerUtil, ReentrancyGuard, 
     JBSplit[] calldata saleSplits,
     string calldata _memo
   ) external override nonReentrant {
-    if (getBoolean(settings, 32) && !hasRole(AUTHORIZED_SELLER_ROLE, msg.sender)) {
+    if (!getBoolean(settings, 32) && !hasRole(AUTHORIZED_SELLER_ROLE, msg.sender)) {
       revert NOT_AUTHORIZED();
     }
 
@@ -384,11 +384,10 @@ contract DutchAuctionHouse is AccessControl, JBSplitPayerUtil, ReentrancyGuard, 
     */
   function setAllowPublicAuctions(bool _allowPublicAuctions)
     external
-    view
     override
     onlyRole(DEFAULT_ADMIN_ROLE)
   {
-    setBoolean(settings, 32, _allowPublicAuctions);
+    settings = setBoolean(settings, 32, _allowPublicAuctions);
   }
 
   /**

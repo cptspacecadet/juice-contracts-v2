@@ -13,7 +13,8 @@ describe('DutchAuctionHouse tests', () => {
   const auctionDuration = 60 * 60;
   const feeRate = 5_000_000; // 0.5%
   const pricingPeriodDuration = 5 * 60; // seconds
-  const allowPublicAuctions = false;
+  const feeDenominator = 1_000_000_000;
+  const allowPublicAuctions = true;
 
   async function setup() {
     let [deployer, tokenOwner, ...accounts] = await ethers.getSigners();
@@ -40,12 +41,13 @@ describe('DutchAuctionHouse tests', () => {
       accounts,
       tokenOwner,
       dutchAuctionHouse,
-      token
+      token,
+      feeReceiverTerminal
     };
   }
 
   async function create(token, dutchAuctionHouse, tokenOwner) {
-    await token.connect(tokenOwner).approve(dutchAuctionHouse.address, 1);
+    await token.connect(tokenOwner).approve(dutchAuctionHouse.address, tokenId);
     await dutchAuctionHouse.connect(tokenOwner).create(token.address, tokenId, startPrice, endPrice, auctionDuration, [], '');
   }
 
@@ -106,6 +108,18 @@ describe('DutchAuctionHouse tests', () => {
         .connect(tokenOwner)
         .create(token.address, tokenId, startPrice, '0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', auctionDuration, [], '')
     ).to.be.revertedWith('INVALID_PRICE()');
+  });
+
+  it(`create() fail: no public auctions`, async () => {
+    const { deployer, dutchAuctionHouse, token, tokenOwner } = await setup();
+
+    await dutchAuctionHouse.connect(deployer).setAllowPublicAuctions(false);
+
+    await expect(
+      dutchAuctionHouse
+        .connect(tokenOwner)
+        .create(token.address, tokenId, startPrice, endPrice, auctionDuration, [], '')
+    ).to.be.revertedWith('NOT_AUTHORIZED()');
   });
 
   it(`bid() success: initial`, async () => {
@@ -200,7 +214,7 @@ describe('DutchAuctionHouse tests', () => {
   });
 
   it(`settle() success: sale`, async () => {
-    const { accounts, dutchAuctionHouse, token, tokenOwner } = await setup();
+    const { accounts, dutchAuctionHouse, feeReceiverTerminal, token, tokenOwner } = await setup();
 
     const referenceTime = (await ethers.provider.getBlock('latest')).timestamp;
     await create(token, dutchAuctionHouse, tokenOwner);
@@ -209,11 +223,17 @@ describe('DutchAuctionHouse tests', () => {
     await network.provider.send("evm_setNextBlockTimestamp", [referenceTime + pricingPeriodDuration * 2 + 120]);
     await network.provider.send("evm_mine");
 
-    await expect(
-      dutchAuctionHouse
-        .connect(accounts[1])
-        .settle(token.address, tokenId, '')
-    ).to.emit(dutchAuctionHouse, 'ConcludeAuction').withArgs(tokenOwner.address, accounts[0].address, token.address, tokenId, startPrice, '');
+    const expectedFee = startPrice.mul(feeRate).div(feeDenominator);
+    const expectedProceeds = startPrice.sub(expectedFee);
+
+    const tx = dutchAuctionHouse.connect(accounts[1]).settle(token.address, tokenId, '');
+
+    await expect(tx)
+      .to.emit(dutchAuctionHouse, 'ConcludeAuction')
+      .withArgs(tokenOwner.address, accounts[0].address, token.address, tokenId, startPrice, '');
+
+    await expect(await tx)
+      .to.changeEtherBalances([tokenOwner, feeReceiverTerminal], [expectedProceeds, expectedFee]);
   });
 
   it(`settle() success: return`, async () => {
@@ -274,5 +294,115 @@ describe('DutchAuctionHouse tests', () => {
     await network.provider.send("evm_setNextBlockTimestamp", [referenceTime + pricingPeriodDuration - 10]);
     await network.provider.send("evm_mine");
     await expect(dutchAuctionHouse.currentPrice(token.address, tokenId + 1)).to.be.revertedWith('INVALID_AUCTION()');
+  });
+
+  it(`setFeeRate() success`, async () => {
+    const { deployer, dutchAuctionHouse } = await setup();
+
+    await expect(
+      dutchAuctionHouse
+        .connect(deployer)
+        .setFeeRate('10000000')
+    ).to.not.be.reverted;
+  });
+
+  it(`setFeeRate() failure: fee rate too high`, async () => {
+    const { deployer, dutchAuctionHouse } = await setup();
+
+    await expect(
+      dutchAuctionHouse
+        .connect(deployer)
+        .setFeeRate('1000000000')
+    ).to.be.revertedWith('INVALID_FEERATE()');
+  });
+
+  it(`setFeeRate() failure: not admin`, async () => {
+    const { accounts, dutchAuctionHouse } = await setup();
+
+    await expect(
+      dutchAuctionHouse
+        .connect(accounts[0])
+        .setFeeRate('10000000')
+    ).to.be.reverted;
+  });
+
+  it(`setAllowPublicAuctions() success`, async () => {
+    const { deployer, dutchAuctionHouse } = await setup();
+
+    await expect(
+      dutchAuctionHouse
+        .connect(deployer)
+        .setAllowPublicAuctions(true)
+    ).to.not.be.reverted;
+  });
+
+  it(`setAllowPublicAuctions() failure: not admin`, async () => {
+    const { accounts, dutchAuctionHouse } = await setup();
+
+    await expect(
+      dutchAuctionHouse
+        .connect(accounts[0])
+        .setAllowPublicAuctions(false)
+    ).to.be.reverted;
+  });
+
+  it(`setFeeReceiver() success`, async () => {
+    const { accounts, deployer, dutchAuctionHouse } = await setup();
+
+    await expect(
+      dutchAuctionHouse
+        .connect(deployer)
+        .setFeeReceiver(accounts[0].address)
+    ).to.not.be.reverted;
+  });
+
+  it(`setFeeReceiver() failure: `, async () => {
+    const { accounts, dutchAuctionHouse } = await setup();
+
+    await expect(
+      dutchAuctionHouse
+        .connect(accounts[0])
+        .setFeeReceiver(accounts[0].address)
+    ).to.be.reverted;
+  });
+
+  it(`addAuthorizedSeller() success`, async () => {
+    const { accounts, deployer, dutchAuctionHouse } = await setup();
+
+    await expect(
+      dutchAuctionHouse
+        .connect(deployer)
+        .addAuthorizedSeller(accounts[0].address)
+    ).to.not.be.reverted;
+  });
+
+  it(`addAuthorizedSeller() failure: `, async () => {
+    const { accounts, dutchAuctionHouse } = await setup();
+
+    await expect(
+      dutchAuctionHouse
+        .connect(accounts[0])
+        .addAuthorizedSeller(accounts[0].address)
+    ).to.be.reverted;
+  });
+
+  it(`removeAuthorizedSeller() success`, async () => {
+    const { accounts, deployer, dutchAuctionHouse } = await setup();
+
+    await expect(
+      dutchAuctionHouse
+        .connect(deployer)
+        .removeAuthorizedSeller(deployer.address)
+    ).to.not.be.reverted;
+  });
+
+  it(`removeAuthorizedSeller() failure: not admin`, async () => {
+    const { accounts, dutchAuctionHouse } = await setup();
+
+    await expect(
+      dutchAuctionHouse
+        .connect(accounts[0])
+        .removeAuthorizedSeller(accounts[0].address)
+    ).to.be.reverted;
   });
 });
