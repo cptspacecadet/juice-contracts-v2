@@ -13,7 +13,7 @@ describe('EnglishAuctionHouse tests', () => {
   const auctionDuration = 60 * 60;
   const feeRate = 5_000_000; // 0.5%
   const feeDenominator = 1_000_000_000;
-  const allowPublicAuctions = false;
+  const allowPublicAuctions = true;
 
   async function setup() {
     let [deployer, tokenOwner, ...accounts] = await ethers.getSigners();
@@ -111,8 +111,20 @@ describe('EnglishAuctionHouse tests', () => {
     await expect(
       englishAuctionHouse
         .connect(tokenOwner)
-        .create(token.address, 1, ethers.utils.parseEther('1'), '0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', auctionDuration, [], '')
+        .create(token.address, 1, basePrice, '0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', auctionDuration, [], '')
     ).to.be.revertedWith('INVALID_PRICE()');
+  });
+
+  it(`create() fail: no public auctions`, async () => {
+    const { deployer, englishAuctionHouse, token, tokenOwner } = await setup();
+
+    await englishAuctionHouse.connect(deployer).setAllowPublicAuctions(false);
+
+    await expect(
+      englishAuctionHouse
+        .connect(tokenOwner)
+        .create(token.address, 1, basePrice, reservePrice, auctionDuration, [], '')
+    ).to.be.revertedWith('NOT_AUTHORIZED()');
   });
 
   it(`bid() success: initial`, async () => {
@@ -265,5 +277,115 @@ describe('EnglishAuctionHouse tests', () => {
         .connect(accounts[1])
         .settle(token.address, tokenId + 1, '')
     ).to.be.revertedWith('INVALID_AUCTION()');
+  });
+
+  it(`setFeeRate() success`, async () => {
+    const { deployer, englishAuctionHouse } = await setup();
+
+    await expect(
+      englishAuctionHouse
+        .connect(deployer)
+        .setFeeRate('10000000')
+    ).to.not.be.reverted;
+  });
+
+  it(`setFeeRate() failure: fee rate too high`, async () => {
+    const { deployer, englishAuctionHouse } = await setup();
+
+    await expect(
+      englishAuctionHouse
+        .connect(deployer)
+        .setFeeRate('1000000000')
+    ).to.be.revertedWith('INVALID_FEERATE()');
+  });
+
+  it(`setFeeRate() failure: not admin`, async () => {
+    const { accounts, englishAuctionHouse } = await setup();
+
+    await expect(
+      englishAuctionHouse
+        .connect(accounts[0])
+        .setFeeRate('10000000')
+    ).to.be.reverted;
+  });
+
+  it(`setAllowPublicAuctions() success`, async () => {
+    const { deployer, englishAuctionHouse } = await setup();
+
+    await expect(
+      englishAuctionHouse
+        .connect(deployer)
+        .setAllowPublicAuctions(true)
+    ).to.not.be.reverted;
+  });
+
+  it(`setAllowPublicAuctions() failure: not admin`, async () => {
+    const { accounts, englishAuctionHouse } = await setup();
+
+    await expect(
+      englishAuctionHouse
+        .connect(accounts[0])
+        .setAllowPublicAuctions(false)
+    ).to.be.reverted;
+  });
+
+  it(`setFeeReceiver() success`, async () => {
+    const { accounts, deployer, englishAuctionHouse } = await setup();
+
+    await expect(
+      englishAuctionHouse
+        .connect(deployer)
+        .setFeeReceiver(accounts[0].address)
+    ).to.not.be.reverted;
+  });
+
+  it(`setFeeReceiver() failure: `, async () => {
+    const { accounts, englishAuctionHouse } = await setup();
+
+    await expect(
+      englishAuctionHouse
+        .connect(accounts[0])
+        .setFeeReceiver(accounts[0].address)
+    ).to.be.reverted;
+  });
+
+  it(`addAuthorizedSeller() success`, async () => {
+    const { accounts, deployer, englishAuctionHouse } = await setup();
+
+    await expect(
+      englishAuctionHouse
+        .connect(deployer)
+        .addAuthorizedSeller(accounts[0].address)
+    ).to.not.be.reverted;
+  });
+
+  it(`addAuthorizedSeller() failure: `, async () => {
+    const { accounts, englishAuctionHouse } = await setup();
+
+    await expect(
+      englishAuctionHouse
+        .connect(accounts[0])
+        .addAuthorizedSeller(accounts[0].address)
+    ).to.be.reverted;
+  });
+
+  it(`removeAuthorizedSeller() success`, async () => {
+    const { accounts, deployer, englishAuctionHouse } = await setup();
+
+    await expect(
+      englishAuctionHouse
+        .connect(deployer)
+        .removeAuthorizedSeller(deployer.address)
+    ).to.not.be.reverted;
+  });
+
+  it(`removeAuthorizedSeller() failure: not admin`, async () => {
+    const { accounts, englishAuctionHouse } = await setup();
+
+    await expect(
+      englishAuctionHouse
+        .connect(accounts[0])
+        .removeAuthorizedSeller(accounts[0].address)
+    ).to.be.reverted;
   });
 });
