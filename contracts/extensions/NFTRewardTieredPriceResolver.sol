@@ -17,6 +17,12 @@ contract NFTRewardTieredPriceResolver is IPriceResolver {
   uint256 public userMintCap;
   RewardTier[] public tiers;
 
+  //*********************************************************************//
+  // --------------------------- custom errors ------------------------- //
+  //*********************************************************************//
+  error INVALID_PRICE_SORT_ORDER();
+
+
   /**
     @notice blah
 
@@ -35,7 +41,9 @@ contract NFTRewardTieredPriceResolver is IPriceResolver {
     globalMintAllowance = _mintCap;
 
     for (uint256 i; i < _tiers.length; i++) {
-      tiers.push(_tiers[i]);
+      if (_tiers[i].contributionFloor < _tiers[i + 1].contributionFloor)
+        revert INVALID_PRICE_SORT_ORDER();
+      tiers.push(_tiers[i]);    
     }
   }
 
