@@ -2,15 +2,16 @@
 pragma solidity 0.8.6;
 
 import '../structs/JBTokenAmount.sol';
+import '../interfaces/extensions/IPriceResolver.sol';
 import '../interfaces/extensions/ITokenSupplyDetails.sol';
 
 struct RewardTier {
-  uint256 rangeFloor;
-  // uint256 idOffset;
-  uint256 tierAllowance;
+  uint256 contributionFloor;
+  uint256 idCeiling;
+  uint256 remainingAllowance;
 }
 
-contract NFTRewardTieredPriceResolver {
+contract NFTRewardTieredPriceResolver is IPriceResolver {
   address public contributionToken;
   uint256 public globalMintAllowance;
   uint256 public userMintCap;
@@ -51,7 +52,7 @@ contract NFTRewardTieredPriceResolver {
     address account,
     JBTokenAmount calldata contribution,
     ITokenSupplyDetails token
-  ) public returns (uint256 tokenId) {
+  ) public override returns (uint256 tokenId) {
     if (contribution.token != contributionToken) {
       return 0;
     }
@@ -67,24 +68,24 @@ contract NFTRewardTieredPriceResolver {
     tokenId = 0;
     for (uint256 i; i < tiers.length - 1; i++) {
       if (
-        tiers[i].rangeFloor <= contribution.value &&
+        tiers[i].contributionFloor <= contribution.value &&
         i == tiers.length - 1 &&
-        tiers[i].tierAllowance > 0
+        tiers[i].remainingAllowance > 0
       ) {
-        tokenId = tiers[i].idOffset + tiers[i].tierAllowance;
+        tokenId = tiers[i].idCeiling - tiers[i].remainingAllowance;
         unchecked {
-          --tiers[i].tierAllowance;
+          --tiers[i].remainingAllowance;
           --globalMintAllowance;
         }
         break;
       } else if (
-        tiers[i].rangeFloor <= contribution.value &&
-        tiers[i + 1].rangeFloor > contribution.value &&
-        tiers[i].tierAllowance > 0
+        tiers[i].contributionFloor <= contribution.value &&
+        tiers[i + 1].contributionFloor > contribution.value &&
+        tiers[i].remainingAllowance > 0
       ) {
-        tokenId = tiers[i].idOffset + tiers[i].tierAllowance;
+        tokenId = tiers[i].idCeiling + tiers[i].remainingAllowance;
         unchecked {
-          --tiers[i].tierAllowance;
+          --tiers[i].remainingAllowance;
           --globalMintAllowance;
         }
         break;
