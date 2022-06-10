@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.6;
 
-import './IToken721UriResolver.sol'
+import './IToken721UriResolver.sol';
 
 interface ITokenSupplyDetails {
   /**
