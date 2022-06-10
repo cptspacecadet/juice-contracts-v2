@@ -4,7 +4,7 @@ pragma solidity 0.8.6;
 import './IToken721UriResolver.sol';
 
 interface INFTRewardDataSourceDelegate {
-  function totalSupply(uint256) external view returns (uint256);
+  function totalSupply() external view returns (uint256);
 
   function approve(
     uint256,

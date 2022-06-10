@@ -236,20 +236,14 @@ contract NFTRewardDataSourceDelegate is
   //*********************************************************************//
 
   /**
-    @notice
-    The total supply of this ERC721.
-
-    ignored: _projectId the ID of the project to which the token belongs. This is ignored.
-
-    @return The total supply of this ERC721, as a fixed point number.
+    @notice The total supply of this ERC721.
   */
-  function totalSupply(uint256) external view override returns (uint256) {
+  function totalSupply() external view override returns (uint256) {
     return _supply;
   }
 
   /**
-    @notice
-    Returns the full URI for the asset.
+    @notice Returns the full URI for the asset.
   */
   function tokenURI(uint256 tokenId) public view override returns (string memory) {
     if (_ownerOf[tokenId] == address(0)) {
