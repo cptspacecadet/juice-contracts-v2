@@ -10,6 +10,7 @@ import '../interfaces/IJBFundingCycleDataSource.sol';
 import '../interfaces/IJBPayDelegate.sol';
 import '../interfaces/IJBRedemptionDelegate.sol';
 import '../interfaces/extensions/INFTRewardDataSourceDelegate.sol';
+import '../interfaces/extensions/IPriceResolver.sol';
 import '../interfaces/extensions/IToken721UriResolver.sol';
 
 import '../structs/JBDidPayData.sol';
@@ -99,6 +100,8 @@ contract NFTRewardDataSourceDelegate is
   */
   string private _contractUri;
 
+  IPriceResolver private priceResolverAddress;
+
   /**
     @param projectId JBX project id this reward is associated with.
     @param directory JBX directory.
@@ -110,6 +113,7 @@ contract NFTRewardDataSourceDelegate is
     @param _tokenUriResolverAddress Custom uri resolver.
     @param _contractMetadataUri Contract metadata uri.
     @param _admin Set an alternate owner.
+    @param _priceResolverAddress Custom uri resolver.
   */
   constructor(
     uint256 projectId,
@@ -121,7 +125,8 @@ contract NFTRewardDataSourceDelegate is
     string memory _uri,
     IToken721UriResolver _tokenUriResolverAddress,
     string memory _contractMetadataUri,
-    address _admin
+    address _admin,
+    IPriceResolver _priceResolverAddress
   ) ERC721Rari(_name, _symbol) {
     // JBX
     _projectId = projectId;
@@ -137,6 +142,8 @@ contract NFTRewardDataSourceDelegate is
     if (_admin != address(0)) {
       _transferOwnership(_admin);
     }
+
+    priceResolverAddress = _priceResolverAddress;
   }
 
   //*********************************************************************//
