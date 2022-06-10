@@ -41,6 +41,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
         ethers.constants.AddressZero,
         NFT_METADATA,
         ethers.constants.AddressZero,
+        ethers.constants.AddressZero
       );
 
     return {

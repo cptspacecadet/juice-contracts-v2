@@ -41,6 +41,7 @@ describe('NFTRewardDataSourceDelegate::tokenUri(...),contractUri(...)', function
         ethers.constants.AddressZero,
         NFT_METADATA,
         ethers.constants.AddressZero,
+        ethers.constants.AddressZero
       );
 
     const mockJbToken721SampleUriResolver = await deployMockContract(deployer, jbToken721SampleUriResolver.abi);
@@ -57,6 +58,7 @@ describe('NFTRewardDataSourceDelegate::tokenUri(...),contractUri(...)', function
         mockJbToken721SampleUriResolver.address,
         NFT_METADATA,
         accounts[0].address,
+        ethers.constants.AddressZero
       );
 
     await jbNFTRewardDataSource.connect(projectTerminal).didPay({

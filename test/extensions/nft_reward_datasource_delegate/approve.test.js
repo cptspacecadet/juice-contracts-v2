@@ -40,6 +40,7 @@ describe('NFTRewardDataSourceDelegate::approve(...)', function () {
         ethers.constants.AddressZero,
         NFT_METADATA,
         ethers.constants.AddressZero,
+        ethers.constants.AddressZero
       );
 
     await nftRewardDataSource.connect(projectTerminal).didPay({

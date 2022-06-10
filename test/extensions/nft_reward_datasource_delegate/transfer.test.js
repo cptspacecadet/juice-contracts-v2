@@ -40,6 +40,7 @@ describe('NFTRewardDataSourceDelegate::transfer(...)', function () {
         ethers.constants.AddressZero,
         NFT_METADATA,
         ethers.constants.AddressZero,
+        ethers.constants.AddressZero
       );
 
     await jbNFTRewardDataSource.connect(projectTerminal).didPay({
@@ -88,17 +89,17 @@ describe('NFTRewardDataSourceDelegate::transfer(...)', function () {
       .to.emit(jbNFTRewardDataSource, 'Transfer')
       .withArgs(owner.address, notOwner.address, tokenId);
 
-    const balance = await jbNFTRewardDataSource['ownerBalance(address)'](owner.address);
+    const balance = await jbNFTRewardDataSource['totalOwnerBalance(address)'](owner.address);
     expect(balance).to.equal(0);
 
-    expect(await jbNFTRewardDataSource['ownerBalance(address)'](notOwner.address)).to.equal(1);
+    expect(await jbNFTRewardDataSource['totalOwnerBalance(address)'](notOwner.address)).to.equal(1);
     expect(await jbNFTRewardDataSource['isOwner(address,uint256)'](notOwner.address, tokenId)).to.equal(true);
 
     await expect(await jbNFTRewardDataSource.connect(notOwner)['transferFrom(uint256,address,address,uint256)'](PROJECT_ID, notOwner.address, owner.address, tokenId))
       .to.emit(jbNFTRewardDataSource, 'Transfer')
       .withArgs(notOwner.address, owner.address, tokenId);
 
-    expect(await jbNFTRewardDataSource['totalSupply(uint256)'](PROJECT_ID)).to.equal(2);
+    expect(await jbNFTRewardDataSource['totalSupply()']()).to.equal(2);
   });
 
   it(`Can't transfer to zero address`, async function () {
@@ -111,7 +112,7 @@ describe('NFTRewardDataSourceDelegate::transfer(...)', function () {
       ['transfer(uint256,address,uint256)'](PROJECT_ID, ethers.constants.AddressZero, tokenId),
     ).to.be.revertedWith('INVALID_RECIPIENT');
 
-    await expect(jbNFTRewardDataSource.ownerBalance(ethers.constants.AddressZero)).to.be.revertedWith('INVALID_ADDRESS');
+    await expect(jbNFTRewardDataSource.totalOwnerBalance(ethers.constants.AddressZero)).to.be.revertedWith('INVALID_ADDRESS');
   });
 
   it(`Can't transfer tokens that aren't owned`, async function () {

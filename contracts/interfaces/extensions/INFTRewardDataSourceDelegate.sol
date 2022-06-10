@@ -2,10 +2,9 @@
 pragma solidity 0.8.6;
 
 import './IToken721UriResolver.sol';
+import './ITokenSupplyDetails.sol';
 
-interface INFTRewardDataSourceDelegate {
-  function totalSupply() external view returns (uint256);
-
+interface INFTRewardDataSourceDelegate is ITokenSupplyDetails {
   function approve(
     uint256,
     address _spender,
@@ -26,8 +25,6 @@ interface INFTRewardDataSourceDelegate {
   ) external;
 
   function mint(address) external returns (uint256);
-
-  function ownerBalance(address _account) external view returns (uint256);
 
   function isOwner(address _account, uint256 _id) external view returns (bool);
 

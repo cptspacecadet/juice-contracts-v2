@@ -12,6 +12,7 @@ import '../interfaces/IJBRedemptionDelegate.sol';
 import '../interfaces/extensions/INFTRewardDataSourceDelegate.sol';
 import '../interfaces/extensions/IPriceResolver.sol';
 import '../interfaces/extensions/IToken721UriResolver.sol';
+import '../interfaces/extensions/ITokenSupplyDetails.sol';
 
 import '../structs/JBDidPayData.sol';
 import '../structs/JBDidRedeemData.sol';
@@ -100,7 +101,7 @@ contract NFTRewardDataSourceDelegate is
   */
   string private _contractUri;
 
-  IPriceResolver private priceResolverAddress;
+  IPriceResolver private priceResolver;
 
   /**
     @param projectId JBX project id this reward is associated with.
@@ -113,7 +114,7 @@ contract NFTRewardDataSourceDelegate is
     @param _tokenUriResolverAddress Custom uri resolver.
     @param _contractMetadataUri Contract metadata uri.
     @param _admin Set an alternate owner.
-    @param _priceResolverAddress Custom uri resolver.
+    @param _priceResolver Custom uri resolver.
   */
   constructor(
     uint256 projectId,
@@ -126,7 +127,7 @@ contract NFTRewardDataSourceDelegate is
     IToken721UriResolver _tokenUriResolverAddress,
     string memory _contractMetadataUri,
     address _admin,
-    IPriceResolver _priceResolverAddress
+    IPriceResolver _priceResolver
   ) ERC721Rari(_name, _symbol) {
     // JBX
     _projectId = projectId;
@@ -143,7 +144,7 @@ contract NFTRewardDataSourceDelegate is
       _transferOwnership(_admin);
     }
 
-    priceResolverAddress = _priceResolverAddress;
+    priceResolver = _priceResolver;
   }
 
   //*********************************************************************//
@@ -198,7 +199,12 @@ contract NFTRewardDataSourceDelegate is
       return;
     }
 
-    if (
+    if (address(priceResolver) != address(0)) {
+      uint256 tokenId = priceResolver.validateContribution(_data.beneficiary, _data.amount, this);
+      _mint(_data.beneficiary, tokenId);
+
+      _supply += 1;
+    } else if (
       (_data.amount.value >= _minContribution.value &&
         _data.amount.token == _minContribution.token) || _minContribution.value == 0
     ) {
@@ -239,15 +245,37 @@ contract NFTRewardDataSourceDelegate is
   }
 
   //*********************************************************************//
-  // ----------------------------- ERC721 ------------------------------ //
+  // ---------------------- ITokenSupplyDetails ------------------------ //
   //*********************************************************************//
 
-  /**
-    @notice The total supply of this ERC721.
-  */
-  function totalSupply() external view override returns (uint256) {
+  function totalSupply() public view override returns (uint256) {
     return _supply;
   }
+
+  function tokenSupply(uint256 _tokenId) public view override returns (uint256) {
+    return _ownerOf[_tokenId] != address(0) ? 1 : 0;
+  }
+
+  function totalOwnerBalance(address _account) public view override returns (uint256) {
+    if (_account == address(0)) {
+      revert INVALID_ADDRESS();
+    }
+
+    return _balanceOf[_account];
+  }
+
+  function ownerTokenBalance(address _account, uint256 _tokenId)
+    public
+    view
+    override
+    returns (uint256)
+  {
+    return _ownerOf[_tokenId] == _account ? 1 : 0;
+  }
+
+  //*********************************************************************//
+  // ----------------------------- ERC721 ------------------------------ //
+  //*********************************************************************//
 
   /**
     @notice Returns the full URI for the asset.
@@ -319,18 +347,6 @@ contract NFTRewardDataSourceDelegate is
     uint256 _id
   ) external override {
     transferFrom(_from, _to, _id);
-  }
-
-  /**
-    @notice
-    Returns the number of tokens held by the given address.
-   */
-  function ownerBalance(address _account) external view override returns (uint256) {
-    if (_account == address(0)) {
-      revert INVALID_ADDRESS();
-    }
-
-    return _balanceOf[_account];
   }
 
   /**
