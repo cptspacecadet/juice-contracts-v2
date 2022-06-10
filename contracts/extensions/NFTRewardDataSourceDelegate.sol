@@ -18,9 +18,11 @@ import '../structs/JBRedeemParamsData.sol';
 import '../structs/JBTokenAmount.sol';
 
 /**
-  @title Jukebox data source delegate that offers project contributors NFTs.
+  @title Juicebox data source delegate that offers project contributors NFTs.
 
   @notice This contract allows project creators to reward contributors with NFTs. Intended use is to incentivize initial project support by minting a limited number of NFTs to the first N contributors.
+
+  @notice One use case is enabling the project to mint an NFT for anyone contributing any amount without a mint limit. Set minContribution.value to 0 and maxSupply to uint256.max to do this. To mint NFTs to the first 100 participants contributing 1000 DAI or more, set minContribution.value to 1000000000000000000000 (3 + 18 zeros), minContribution.token to 0x6B175474E89094C44Da98b954EedeAC495271d0F and maxSupply to 100.
 
   @dev Keep in mind that this PayDelegate and RedeemDelegate implementation will simply pass through the weight and reclaimAmount it is called with.
  */
@@ -171,6 +173,15 @@ contract NFTRewardDataSourceDelegate is
   // ------------------------ IJBPayDelegate --------------------------- //
   //*********************************************************************//
 
+  /**
+    @notice Part of IJBPayDelegate, this function will mint an NFT to the contributor (_data.beneficiary) if conditions are met.
+
+    @dev This function will revert if the terminal calling it does not belong to the registered project id.
+
+    @dev This function will also revert due to ERC721 mint issue, which may interfere with contribution processing. These are unlikely and include beneficiary being the 0 address or the beneficiary already holding the token id being minted. The latter should not happen given that mint is only controlled by this function.
+
+    @param _data Juicebox project contribution data.
+   */
   function didPay(JBDidPayData calldata _data) external override {
     if (!_directory.isTerminalOf(_projectId, IJBPaymentTerminal(msg.sender))) {
       revert INVALID_PAYMENT_EVENT();
@@ -181,8 +192,8 @@ contract NFTRewardDataSourceDelegate is
     }
 
     if (
-      _data.amount.value >= _minContribution.value &&
-      _data.amount.currency == _minContribution.currency
+      (_data.amount.value >= _minContribution.value &&
+        _data.amount.token == _minContribution.token) || _minContribution.value == 0
     ) {
       uint256 tokenId = _supply;
       _mint(_data.beneficiary, tokenId);
@@ -253,8 +264,7 @@ contract NFTRewardDataSourceDelegate is
   }
 
   /**
-    @notice
-    Returns the contract metadata uri.
+    @notice Returns the contract metadata uri.
   */
   function contractURI() public view override returns (string memory contractUri) {
     contractUri = _contractUri;
