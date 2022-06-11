@@ -201,6 +201,11 @@ contract NFTRewardDataSourceDelegate is
 
     if (address(priceResolver) != address(0)) {
       uint256 tokenId = priceResolver.validateContribution(_data.beneficiary, _data.amount, this);
+
+      if (tokenId == 0) {
+        return;
+      }
+
       _mint(_data.beneficiary, tokenId);
 
       _supply += 1;

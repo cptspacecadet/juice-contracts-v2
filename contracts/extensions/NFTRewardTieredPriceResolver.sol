@@ -24,15 +24,18 @@ contract NFTRewardTieredPriceResolver is IPriceResolver {
 
     @param _contributionToken blah
     @param _mintCap blah
+    @param _userMintCap blah
     @param _tiers blah
    */
   constructor(
     address _contributionToken,
     uint256 _mintCap,
+    uint256 _userMintCap,
     RewardTier[] memory _tiers
   ) {
     contributionToken = _contributionToken;
     globalMintAllowance = _mintCap;
+    userMintCap = _userMintCap;
 
     for (uint256 i; i < _tiers.length; i++) {
       tiers.push(_tiers[i]);
@@ -66,7 +69,7 @@ contract NFTRewardTieredPriceResolver is IPriceResolver {
     }
 
     tokenId = 0;
-    for (uint256 i; i < tiers.length - 1; i++) {
+    for (uint256 i; i < tiers.length; i++) {
       if (
         tiers[i].contributionFloor <= contribution.value &&
         i == tiers.length - 1 &&
@@ -83,7 +86,7 @@ contract NFTRewardTieredPriceResolver is IPriceResolver {
         tiers[i + 1].contributionFloor > contribution.value &&
         tiers[i].remainingAllowance > 0
       ) {
-        tokenId = tiers[i].idCeiling + tiers[i].remainingAllowance;
+        tokenId = tiers[i].idCeiling - tiers[i].remainingAllowance;
         unchecked {
           --tiers[i].remainingAllowance;
           --globalMintAllowance;
