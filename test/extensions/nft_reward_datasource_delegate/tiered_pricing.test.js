@@ -7,10 +7,6 @@ import jbDirectory from '../../../artifacts/contracts/JBDirectory.sol/JBDirector
 
 describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
   const PROJECT_ID = 2;
-  const NFT_NAME = 'Reward NFT';
-  const NFT_SYMBOL = 'RN';
-  const NFT_URI = 'ipfs://content_base';
-  const NFT_METADATA = 'ipfs://metadata';
   const CURRENCY_ETH = '0x000000000000000000000000000000000000EEEe'; // JBCurrencies.ETH
   const halfEth = ethers.utils.parseEther('0.5');
   const tier1Floor = ethers.utils.parseEther('1');
@@ -19,14 +15,21 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
   const fourEth = ethers.utils.parseEther('4');
   const ethToken = '0x000000000000000000000000000000000000EEEe'; // JBTokens.ETH
 
-  async function setup() {
-    let [deployer, projectTerminal, beneficiary, ...accounts] = await ethers.getSigners();
+  let deployer;
+  let projectTerminal;
+  let beneficiary;
+  let accounts;
+  let jbNFTRewardDataSource;
 
-    let [
-      mockJbDirectory,
-    ] = await Promise.all([
-      deployMockContract(deployer, jbDirectory.abi),
-    ]);
+  beforeEach(async () => {
+    const NFT_NAME = 'Reward NFT';
+    const NFT_SYMBOL = 'RN';
+    const NFT_URI = 'ipfs://content_base';
+    const NFT_METADATA = 'ipfs://metadata';
+
+    [deployer, projectTerminal, beneficiary, ...accounts] = await ethers.getSigners();
+
+    const mockJbDirectory = await deployMockContract(deployer, jbDirectory.abi);
 
     await mockJbDirectory.mock.isTerminalOf.withArgs(PROJECT_ID, projectTerminal.address).returns(true);
     await mockJbDirectory.mock.isTerminalOf.withArgs(PROJECT_ID, beneficiary.address).returns(false);
@@ -43,7 +46,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
       .deploy(ethToken, '100000000000', 2, rewardTiers);
 
     const jbNFTRewardDataSourceFactory = await ethers.getContractFactory('NFTRewardDataSourceDelegate', deployer);
-    const jbNFTRewardDataSource = await jbNFTRewardDataSourceFactory
+    jbNFTRewardDataSource = await jbNFTRewardDataSourceFactory
       .connect(deployer)
       .deploy(
         PROJECT_ID,
@@ -58,18 +61,9 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
         ethers.constants.AddressZero,
         nftRewardTieredPriceResolver.address
       );
-
-    return {
-      projectTerminal,
-      beneficiary,
-      accounts,
-      jbNFTRewardDataSource,
-    };
-  }
+  });
 
   it('Should mint token if meeting tier 1 contribution parameters', async () => {
-    const { jbNFTRewardDataSource, projectTerminal, beneficiary } = await setup();
-
     await expect(jbNFTRewardDataSource.connect(projectTerminal).didPay({
       payer: beneficiary.address,
       projectId: PROJECT_ID,
@@ -84,8 +78,6 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
   });
 
   it('Should mint token if exceeding tier 3 contribution parameters', async () => {
-    const { jbNFTRewardDataSource, projectTerminal, beneficiary } = await setup();
-
     await expect(jbNFTRewardDataSource.connect(projectTerminal).didPay({
       payer: beneficiary.address,
       projectId: PROJECT_ID,
@@ -100,8 +92,6 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
   });
 
   it('Should mint token if meeting tier 3 contribution parameters', async () => {
-    const { jbNFTRewardDataSource, projectTerminal, beneficiary } = await setup();
-
     await expect(jbNFTRewardDataSource.connect(projectTerminal).didPay({
       payer: beneficiary.address,
       projectId: PROJECT_ID,
@@ -116,8 +106,6 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
   });
 
   it('Should not mint token if below min contribution', async () => {
-    const { jbNFTRewardDataSource, projectTerminal, beneficiary } = await setup();
-
     await expect(jbNFTRewardDataSource.connect(projectTerminal).didPay({
       payer: beneficiary.address,
       projectId: PROJECT_ID,
@@ -132,7 +120,6 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
   });
 
   it('fail to deploy: INVALID_PRICE_SORT_ORDER', async () => {
-    const { deployer } = await setup();
     const unsortedRewardTiers = [
       { contributionFloor: tier1Floor, idCeiling: 1001, remainingAllowance: 1000 },
       { contributionFloor: tier3Floor, idCeiling: 1511, remainingAllowance: 10 },
@@ -146,7 +133,6 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
   });
 
   it('test non-mint results', async () => {
-    const { beneficiary, deployer } = await setup();
     const rewardTiers = [
       { contributionFloor: tier1Floor, idCeiling: 1001, remainingAllowance: 1000 },
       { contributionFloor: tier2Floor, idCeiling: 1501, remainingAllowance: 500 },
