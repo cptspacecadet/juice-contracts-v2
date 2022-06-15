@@ -9,13 +9,12 @@ import '../interfaces/IJBPaymentTerminal.sol';
 import '../interfaces/IJBRedemptionDelegate.sol';
 import '../libraries/JBCurrencies.sol';
 import '../libraries/JBTokens.sol';
-
 import '../structs/JBDidPayData.sol';
 
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol';
-import '@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3SwapCallback.sol';
-import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
+import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
+import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 
 interface IWETH9 is IERC20 {
   /// @notice Deposit ether to get wrapped ether
@@ -25,7 +24,7 @@ interface IWETH9 is IERC20 {
   function withdraw(uint256) external;
 }
 
-interface IDaiTreasuryDelegate {
+interface IDaiTreasuryDelegateR {
   receive() external payable;
 }
 
@@ -40,12 +39,11 @@ interface IDaiTreasuryDelegate {
 
   @dev This contract will own the DAI balance until it's redeemed back into ether and sent out.
  */
-contract DaiTreasuryDelegate is
-  IDaiTreasuryDelegate,
+contract DaiTreasuryDelegateR is
+  IDaiTreasuryDelegateR,
   IJBFundingCycleDataSource,
   IJBPayDelegate,
-  IJBRedemptionDelegate,
-  IUniswapV3SwapCallback
+  IJBRedemptionDelegate
 {
   //*********************************************************************//
   // --------------------------- custom errors ------------------------- //
@@ -71,24 +69,18 @@ contract DaiTreasuryDelegate is
   /**
     @notice Uniswap v3 pool to use for swaps.
    */
-  IUniswapV3Pool private constant _tokenPool =
-    IUniswapV3Pool(0xC2e9F25Be6257c210d7Adf0D4Cd6E3E881ba25f8); // TODO: this should be abstracted into a SwapProvider that can offer interfaces other than just uniswap
+  ISwapRouter private constant _swapRouter =
+    ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564); // TODO: this should be abstracted into a SwapProvider that can offer interfaces other than just uniswap
 
   /**
     @notice Hardwired WETH address for use as "cash" in the swaps.
    */
   IWETH9 private constant _weth = IWETH9(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
-  /**
-    @notice Default direction for use with IUniswapV3Pool.swap as zeroForOne intended for ether (WETH) swaps into _balanceToken.
-
-    @dev For DAI/WETH pool at 0xC2e9F25Be6257c210d7Adf0D4Cd6E3E881ba25f8 default direction, WETH -> DAI is `false`.
-   */
-  bool private immutable _defaultDirection;
+  uint24 public constant poolFee = 3000;
 
   constructor(IJBController jbxController) {
     _jbxController = jbxController;
-    _defaultDirection = address(_weth) < address(_balanceToken);
   }
 
   //*********************************************************************//
@@ -113,17 +105,24 @@ contract DaiTreasuryDelegate is
       _data.memo
     );
 
-    (int256 amount0, int256 amount1) = _tokenPool.swap(
-      address(this),
-      _defaultDirection,
-      int256(_data.amount.value),
-      0,
-      ''
-    );
+    _weth.deposit{value: _data.amount.value}();
+    _weth.approve(address(_swapRouter), _data.amount.value);
+
+    ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+      tokenIn: address(_weth),
+      tokenOut: address(_balanceToken),
+      fee: poolFee,
+      recipient: address(this),
+      deadline: block.timestamp,
+      amountIn: _data.amount.value,
+      amountOutMinimum: 0,
+      sqrtPriceLimitX96: 0
+    });
+    uint256 amountOut = _swapRouter.exactInputSingle(params);
 
     _jbxController.mintTokensOf(
       _data.projectId,
-      _defaultDirection ? uint256(amount1) : uint256(amount0),
+      amountOut,
       msg.sender,
       '',
       false, // _preferClaimedTokens,
@@ -147,19 +146,25 @@ contract DaiTreasuryDelegate is
       false //preferClaimedTokens
     );
 
-    (int256 amount0, int256 amount1) = _tokenPool.swap(
-      address(this),
-      !_defaultDirection,
-      int256(_data.projectTokenCount),
-      0,
-      ''
-    );
+    _balanceToken.approve(address(_swapRouter), _data.projectTokenCount);
 
-    _weth.withdraw(_defaultDirection ? uint256(amount0) : uint256(amount1));
+    ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+      tokenIn: address(_balanceToken),
+      tokenOut: address(_weth),
+      fee: poolFee,
+      recipient: address(this),
+      deadline: block.timestamp,
+      amountIn: _data.projectTokenCount,
+      amountOutMinimum: 0,
+      sqrtPriceLimitX96: 0
+    });
+    uint256 amountOut = _swapRouter.exactInputSingle(params);
+
+    _weth.withdraw(amountOut);
 
     (IJBPaymentTerminal(msg.sender)).addToBalanceOf(
       _data.projectId,
-      _defaultDirection ? uint256(amount0) : uint256(amount1),
+      amountOut,
       JBTokens.ETH,
       _data.memo,
       _data.metadata
@@ -203,45 +208,13 @@ contract DaiTreasuryDelegate is
   }
 
   /**
-    @notice IUniswapV3SwapCallback implementation
-
-    @notice This method will fund the swap.
-   */
-  function uniswapV3SwapCallback(
-    int256 amount0Delta,
-    int256 amount1Delta,
-    bytes calldata
-  ) external override {
-    if (msg.sender != address(_tokenPool)) revert Callback_unauth();
-
-    if (amount0Delta < 0 && _defaultDirection) {
-      // deposit
-      _weth.deposit{value: uint256(amount0Delta)}();
-
-      _weth.transfer(address(_tokenPool), uint256(amount0Delta)); // _weth == _tokenPool.token0
-    } else if (amount1Delta < 0 && !_defaultDirection) {
-      // deposit
-      _weth.deposit{value: uint256(amount0Delta)}();
-
-      _weth.transfer(address(_tokenPool), uint256(amount1Delta)); // _weth == _tokenPool.token1
-    } else if (amount0Delta < 0) {
-      // redeem
-      IERC20Metadata(_balanceToken).transfer(address(_tokenPool), uint256(amount0Delta));
-    } else if (amount1Delta < 0) {
-      // redeem
-      IERC20Metadata(_balanceToken).transfer(address(_tokenPool), uint256(amount1Delta));
-    }
-  }
-
-  /**
     @notice IERC165 implementation
    */
   function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
     return
       interfaceId == type(IJBFundingCycleDataSource).interfaceId ||
       interfaceId == type(IJBPayDelegate).interfaceId ||
-      interfaceId == type(IJBRedemptionDelegate).interfaceId ||
-      interfaceId == type(IUniswapV3SwapCallback).interfaceId;
+      interfaceId == type(IJBRedemptionDelegate).interfaceId;
   }
 
   /**
