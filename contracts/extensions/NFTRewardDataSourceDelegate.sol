@@ -191,7 +191,10 @@ contract NFTRewardDataSourceDelegate is
     @param _data Juicebox project contribution data.
    */
   function didPay(JBDidPayData calldata _data) external override {
-    if (!_directory.isTerminalOf(_projectId, IJBPaymentTerminal(msg.sender))) {
+    if (
+      !_directory.isTerminalOf(_projectId, IJBPaymentTerminal(msg.sender)) ||
+      _data.projectId != _projectId
+    ) {
       revert INVALID_PAYMENT_EVENT();
     }
 
