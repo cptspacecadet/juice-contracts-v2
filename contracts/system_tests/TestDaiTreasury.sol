@@ -18,9 +18,9 @@ import '../libraries/JBCurrencies.sol';
 import '../libraries/JBFundingCycleMetadataResolver.sol';
 import '../libraries/JBOperations.sol';
 import '../libraries/JBTokens.sol';
+import '../JBTokenStore.sol';
 import '../structs/JBFundingCycle.sol';
 
-// import '../extensions/DaiTreasuryDelegate.sol';
 import '../extensions/DaiTreasuryDelegate.sol';
 
 import '@paulrberg/contracts/math/PRBMath.sol';
@@ -28,10 +28,16 @@ import '@paulrberg/contracts/math/PRBMath.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3SwapCallback.sol';
 
+import 'hardhat/console.sol';
+
 contract TestDaiTreasury is TestBaseWorkflow {
   JBController controller;
+  JBTokenStore tokenStore;
+  IJBPayoutRedemptionPaymentTerminal treasuryTerminal;
   DaiTreasuryDelegate daiTreasury;
   uint256 projectId;
+  IJBToken treasuryToken;
+  address contributorAccount = address(0x9cec118945e3430047aCbCCaAd717545d93C0DE8);
 
   JBProjectMetadata _projectMetadata;
   JBFundingCycleData _data;
@@ -44,6 +50,8 @@ contract TestDaiTreasury is TestBaseWorkflow {
     super.setUp();
 
     controller = jbController();
+    treasuryTerminal = jbETHPaymentTerminal();
+    tokenStore = jbTokenStore();
 
     daiTreasury = new DaiTreasuryDelegate(controller);
 
@@ -72,7 +80,7 @@ contract TestDaiTreasury is TestBaseWorkflow {
       holdFees: false,
       useTotalOverflowForRedemptions: false,
       useDataSourceForPay: true,
-      useDataSourceForRedeem: false,
+      useDataSourceForRedeem: true,
       dataSource: address(daiTreasury)
     });
 
@@ -87,7 +95,6 @@ contract TestDaiTreasury is TestBaseWorkflow {
       })
     );
 
-    // // Grant overflow allowance
     uint256[] memory permissionIndex = new uint256[](1);
     permissionIndex[0] = JBOperations.USE_ALLOWANCE;
 
@@ -100,12 +107,12 @@ contract TestDaiTreasury is TestBaseWorkflow {
       })
     );
 
-    // // Set delegate as feeless
     evm.prank(multisig());
     jbETHPaymentTerminal().setFeelessAddress(address(daiTreasury), true);
 
-    _terminals = [jbETHPaymentTerminal()];
+    _terminals = [treasuryTerminal];
 
+    evm.prank(multisig());
     projectId = controller.launchProjectFor(
       multisig(),
       _projectMetadata,
@@ -117,18 +124,40 @@ contract TestDaiTreasury is TestBaseWorkflow {
       _terminals,
       ''
     );
+
+    evm.prank(multisig());
+    treasuryToken = controller.issueTokenFor(projectId, 'DAI Share', 'DST');
   }
 
-  function testTerminalEtherDeposit() public {
-    jbETHPaymentTerminal().pay{value: 1 ether}(
+  function testTerminalContributionCycle() public {
+    evm.prank(contributorAccount);
+    treasuryTerminal.pay{value: 1 ether}(
       projectId,
       1 ether,
       address(0),
-      beneficiary(),
+      contributorAccount,
       0,
       false,
       'hedge my money!',
       new bytes(0)
     );
+
+    uint256 minted = tokenStore.balanceOf(contributorAccount, projectId);
+    console.log('minted', minted);
+
+    evm.prank(contributorAccount);
+    treasuryTerminal.redeemTokensOf(
+      contributorAccount,
+      projectId,
+      minted,
+      address(treasuryToken),
+      0,
+      payable(address(this)),
+      'return my money!',
+      new bytes(0)
+    );
+
+    minted = tokenStore.balanceOf(contributorAccount, projectId);
+    console.log('remaining', minted);
   }
 }

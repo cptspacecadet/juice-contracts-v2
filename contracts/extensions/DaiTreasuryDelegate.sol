@@ -24,7 +24,7 @@ interface IWETH9 is IERC20 {
   function withdraw(uint256) external;
 }
 
-interface IDaiTreasuryDelegateR {
+interface IDaiTreasuryDelegate {
   receive() external payable;
 }
 
@@ -39,8 +39,8 @@ interface IDaiTreasuryDelegateR {
 
   @dev This contract will own the DAI balance until it's redeemed back into ether and sent out.
  */
-contract DaiTreasuryDelegateR is
-  IDaiTreasuryDelegateR,
+contract DaiTreasuryDelegate is
+  IDaiTreasuryDelegate,
   IJBFundingCycleDataSource,
   IJBPayDelegate,
   IJBRedemptionDelegate
@@ -63,8 +63,7 @@ contract DaiTreasuryDelegateR is
   /**
     @notice Balance token, in this case DAI, that is held by the delegate on behalf of depositors.
    */
-  IERC20Metadata private constant _balanceToken =
-    IERC20Metadata(0x6B175474E89094C44Da98b954EedeAC495271d0F); // DAI
+  IERC20Metadata private constant _dai = IERC20Metadata(0x6B175474E89094C44Da98b954EedeAC495271d0F); // DAI
 
   /**
     @notice Uniswap v3 pool to use for swaps.
@@ -110,7 +109,7 @@ contract DaiTreasuryDelegateR is
 
     ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
       tokenIn: address(_weth),
-      tokenOut: address(_balanceToken),
+      tokenOut: address(_dai),
       fee: poolFee,
       recipient: address(this),
       deadline: block.timestamp,
@@ -123,7 +122,7 @@ contract DaiTreasuryDelegateR is
     _jbxController.mintTokensOf(
       _data.projectId,
       amountOut,
-      msg.sender,
+      _data.beneficiary,
       '',
       false, // _preferClaimedTokens,
       false // _useReservedRate
@@ -136,20 +135,14 @@ contract DaiTreasuryDelegateR is
     @notice This function will swap the a portion of the owned DAI balance in the same amount as _data.amount, convert the resulting WETH into ether and send it back to the caller.
 
     @dev _data.amount will be validated against the project token. _data.amount will be burned from the caller via JBController.
+
+    @dev JBPayoutRedemptionPaymentTerminal would have burned the tokens before calling this function.
    */
   function didRedeem(JBDidRedeemData calldata _data) public override {
-    _jbxController.burnTokensOf(
-      msg.sender,
-      _data.projectId,
-      _data.projectTokenCount,
-      _data.memo,
-      false //preferClaimedTokens
-    );
-
-    _balanceToken.approve(address(_swapRouter), _data.projectTokenCount);
+    _dai.approve(address(_swapRouter), _data.projectTokenCount);
 
     ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-      tokenIn: address(_balanceToken),
+      tokenIn: address(_dai),
       tokenOut: address(_weth),
       fee: poolFee,
       recipient: address(this),
