@@ -129,7 +129,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
     const nftRewardTieredPriceResolverFactory = await ethers.getContractFactory('NFTRewardTieredPriceResolver', deployer);
 
     await expect(nftRewardTieredPriceResolverFactory.deploy(ethToken, '100000000000', 2, unsortedRewardTiers))
-      .to.be.revertedWith('INVALID_PRICE_SORT_ORDER()');
+      .to.be.revertedWith('INVALID_PRICE_SORT_ORDER(2)');
   });
 
   it('test non-mint results', async () => {

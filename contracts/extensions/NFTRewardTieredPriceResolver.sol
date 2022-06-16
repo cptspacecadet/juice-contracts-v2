@@ -20,7 +20,8 @@ contract NFTRewardTieredPriceResolver is IPriceResolver {
   //*********************************************************************//
   // --------------------------- custom errors ------------------------- //
   //*********************************************************************//
-  error INVALID_PRICE_SORT_ORDER();
+  error INVALID_PRICE_SORT_ORDER(uint256);
+  error INVALID_ID_SORT_ORDER(uint256);
 
   /**
     @notice blah
@@ -42,11 +43,19 @@ contract NFTRewardTieredPriceResolver is IPriceResolver {
     globalMintAllowance = _mintCap;
     userMintCap = _userMintCap;
 
-    for (uint256 i; i < _tiers.length; i++) {
-      if (i < _tiers.length - 1 && _tiers[i].contributionFloor > _tiers[i + 1].contributionFloor) {
-        revert INVALID_PRICE_SORT_ORDER();
+    if (_tiers.length > 0) {
+      tiers.push(_tiers[0]);
+      for (uint256 i = 1; i < _tiers.length; i++) {
+        if (_tiers[i].contributionFloor < _tiers[i - 1].contributionFloor) {
+          revert INVALID_PRICE_SORT_ORDER(i);
+        }
+
+        if (_tiers[i].idCeiling - _tiers[i].remainingAllowance < _tiers[i - 1].idCeiling) {
+          revert INVALID_ID_SORT_ORDER(i);
+        }
+
+        tiers.push(_tiers[i]);
       }
-      tiers.push(_tiers[i]);
     }
   }
 
