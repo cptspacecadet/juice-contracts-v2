@@ -37,7 +37,7 @@ contract TestDaiTreasury is TestBaseWorkflow {
   DaiTreasuryDelegate daiTreasury;
   uint256 projectId;
   IJBToken treasuryToken;
-  address contributorAccount = address(0x9cec118945e3430047aCbCCaAd717545d93C0DE8);
+  address contributorAccount = address(0x7F101fE45e6649A6fB8F3F8B43ed03D353f2B90c);
 
   JBProjectMetadata _projectMetadata;
   JBFundingCycleData _data;
@@ -130,6 +130,10 @@ contract TestDaiTreasury is TestBaseWorkflow {
   }
 
   function testTerminalContributionCycle() public {
+    console.log('using', contributorAccount, contributorAccount.balance);
+    assertGt(contributorAccount.balance, 1 ether);
+
+    uint256 startBalance = contributorAccount.balance;
     evm.prank(contributorAccount);
     treasuryTerminal.pay{value: 1 ether}(
       projectId,
@@ -143,7 +147,10 @@ contract TestDaiTreasury is TestBaseWorkflow {
     );
 
     uint256 minted = tokenStore.balanceOf(contributorAccount, projectId);
-    console.log('minted', minted);
+    assertGt(minted, 0);
+
+    uint256 interimBalance = contributorAccount.balance;
+    assertGt(startBalance, interimBalance);
 
     evm.prank(contributorAccount);
     treasuryTerminal.redeemTokensOf(
@@ -152,12 +159,14 @@ contract TestDaiTreasury is TestBaseWorkflow {
       minted,
       address(treasuryToken),
       0,
-      payable(address(this)),
+      payable(contributorAccount),
       'return my money!',
       new bytes(0)
     );
 
     minted = tokenStore.balanceOf(contributorAccount, projectId);
-    console.log('remaining', minted);
+
+    uint256 endBalance = contributorAccount.balance;
+    assertGt(endBalance, interimBalance);
   }
 }

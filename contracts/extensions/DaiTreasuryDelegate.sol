@@ -132,7 +132,7 @@ contract DaiTreasuryDelegate is
   /**
     @notice IJBRedemptionDelegate implementation
 
-    @notice This function will swap the a portion of the owned DAI balance in the same amount as _data.amount, convert the resulting WETH into ether and send it back to the caller.
+    @notice This function will swap the a portion of the owned DAI balance in the same amount as _data.amount, convert the resulting WETH into ether and send it back to the beneficiary defined in the params.
 
     @dev _data.amount will be validated against the project token. _data.amount will be burned from the caller via JBController.
 
@@ -155,13 +155,7 @@ contract DaiTreasuryDelegate is
 
     _weth.withdraw(amountOut);
 
-    (IJBPaymentTerminal(msg.sender)).addToBalanceOf(
-      _data.projectId,
-      amountOut,
-      JBTokens.ETH,
-      _data.memo,
-      _data.metadata
-    );
+    _data.beneficiary.transfer(amountOut);
   }
 
   /**
