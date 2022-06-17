@@ -22,7 +22,7 @@ struct RewardTier {
   uint256 remainingAllowance;
 }
 
-contract NFTRewardTieredPriceResolver is IPriceResolver {
+contract TieredPriceResolver is IPriceResolver {
   address public contributionToken;
   uint256 public globalMintAllowance;
   uint256 public userMintCap;

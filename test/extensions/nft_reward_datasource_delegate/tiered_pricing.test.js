@@ -40,7 +40,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
       { contributionFloor: tier3Floor, idCeiling: 1511, remainingAllowance: 10 }
     ];
 
-    const nftRewardTieredPriceResolverFactory = await ethers.getContractFactory('NFTRewardTieredPriceResolver', deployer);
+    const nftRewardTieredPriceResolverFactory = await ethers.getContractFactory('TieredPriceResolver', deployer);
     const nftRewardTieredPriceResolver = await nftRewardTieredPriceResolverFactory
       .connect(deployer)
       .deploy(ethToken, '100000000000', 2, rewardTiers);
@@ -126,7 +126,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
       { contributionFloor: tier2Floor, idCeiling: 1501, remainingAllowance: 500 }
     ];
 
-    const nftRewardTieredPriceResolverFactory = await ethers.getContractFactory('NFTRewardTieredPriceResolver', deployer);
+    const nftRewardTieredPriceResolverFactory = await ethers.getContractFactory('TieredPriceResolver', deployer);
 
     await expect(nftRewardTieredPriceResolverFactory.deploy(ethToken, '100000000000', 2, unsortedRewardTiers))
       .to.be.revertedWith('INVALID_PRICE_SORT_ORDER(2)');
@@ -139,7 +139,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
       { contributionFloor: tier3Floor, idCeiling: 1511, remainingAllowance: 10 }
     ];
 
-    const nftRewardTieredPriceResolverFactory = await ethers.getContractFactory('NFTRewardTieredPriceResolver', deployer);
+    const nftRewardTieredPriceResolverFactory = await ethers.getContractFactory('TieredPriceResolver', deployer);
     const nftRewardTieredPriceResolver = await nftRewardTieredPriceResolverFactory.deploy(ethToken, 0, 0, rewardTiers);
 
     const invalidTokenContribution = { token: ethers.constants.AddressZero, value: 0, decimals: 18, currency: ethers.constants.AddressZero };
