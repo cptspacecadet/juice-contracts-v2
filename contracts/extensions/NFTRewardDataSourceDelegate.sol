@@ -46,6 +46,7 @@ contract NFTRewardDataSourceDelegate is
   error INVALID_ADDRESS();
   error INVALID_TOKEN();
   error SUPPLY_EXHAUSTED();
+  error NON_TRANSFERRABLE();
 
   //*********************************************************************//
   // -------------------------- constructor ---------------------------- //
@@ -103,6 +104,8 @@ contract NFTRewardDataSourceDelegate is
 
   IPriceResolver private priceResolver;
 
+  bool private transferrable;
+
   /**
     @param projectId JBX project id this reward is associated with.
     @param directory JBX directory.
@@ -145,6 +148,8 @@ contract NFTRewardDataSourceDelegate is
     }
 
     priceResolver = _priceResolver;
+
+    transferrable = true;
   }
 
   //*********************************************************************//
@@ -309,33 +314,15 @@ contract NFTRewardDataSourceDelegate is
 
   /**
     @notice
-    Approves an account to spend tokens on the `msg.sender`s behalf.
-
-    ignored: _projectId the ID of the project to which the token belongs. This is ignored.
-    @param _spender The address that will be spending tokens on the `msg.sender`s behalf.
-    @param _id NFT id to approve.
-  */
-  function approve(
-    uint256,
-    address _spender,
-    uint256 _id
-  ) external override {
-    approve(_spender, _id);
-  }
-
-  /**
-    @notice
     Transfer tokens to an account.
 
-    ignored: _projectId The ID of the project to which the token belongs. This is ignored.
     @param _to The destination address.
     @param _id NFT id to transfer.
   */
-  function transfer(
-    uint256,
-    address _to,
-    uint256 _id
-  ) external override {
+  function transfer(address _to, uint256 _id) public override {
+    if (!transferrable) {
+      revert NON_TRANSFERRABLE();
+    }
     transferFrom(msg.sender, _to, _id);
   }
 
@@ -343,18 +330,19 @@ contract NFTRewardDataSourceDelegate is
     @notice
     Transfer tokens between accounts.
 
-    ignored: _projectId The ID of the project to which the token belongs. This is ignored.
     @param _from The originating address.
     @param _to The destination address.
     @param _id The amount of the transfer, as a fixed point number with 18 decimals.
   */
   function transferFrom(
-    uint256,
     address _from,
     address _to,
     uint256 _id
-  ) external override {
-    transferFrom(_from, _to, _id);
+  ) public override {
+    if (!transferrable) {
+      revert NON_TRANSFERRABLE();
+    }
+    super.transferFrom(_from, _to, _id);
   }
 
   /**
@@ -408,5 +396,9 @@ contract NFTRewardDataSourceDelegate is
     onlyOwner
   {
     _tokenUriResolver = _tokenUriResolverAddress;
+  }
+
+  function setTransferrable(bool _transferrable) external override onlyOwner {
+    transferrable = _transferrable;
   }
 }

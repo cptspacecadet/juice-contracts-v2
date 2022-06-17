@@ -5,24 +5,7 @@ import './IToken721UriResolver.sol';
 import './ITokenSupplyDetails.sol';
 
 interface INFTRewardDataSourceDelegate is ITokenSupplyDetails {
-  function approve(
-    uint256,
-    address _spender,
-    uint256 _id
-  ) external;
-
-  function transfer(
-    uint256 _projectId,
-    address _to,
-    uint256 _id
-  ) external;
-
-  function transferFrom(
-    uint256 _projectId,
-    address _from,
-    address _to,
-    uint256 _id
-  ) external;
+  function transfer(address _to, uint256 _id) external;
 
   function mint(address) external returns (uint256);
 
@@ -35,4 +18,6 @@ interface INFTRewardDataSourceDelegate is ITokenSupplyDetails {
   function setTokenUri(string calldata _uri) external;
 
   function setTokenUriResolver(IToken721UriResolver _tokenUriResolverAddress) external;
+
+  function setTransferrable(bool _transferrable) external;
 }
