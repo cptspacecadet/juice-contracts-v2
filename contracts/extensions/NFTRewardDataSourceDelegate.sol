@@ -47,6 +47,7 @@ contract NFTRewardDataSourceDelegate is
   error INVALID_TOKEN();
   error SUPPLY_EXHAUSTED();
   error NON_TRANSFERRABLE();
+  error INVALID_REQUEST(string);
 
   //*********************************************************************//
   // -------------------------- constructor ---------------------------- //
@@ -349,10 +350,11 @@ contract NFTRewardDataSourceDelegate is
     @notice
     Confirms that the given address owns the provided token.
    */
-  function isOwner(address _account, uint256 _id) external view override returns (bool) {
+  function isOwner(address _account, uint256 _id) public view override returns (bool) {
     return _ownerOf[_id] == _account;
   }
 
+  // TODO: this will cause issues for some price resolvers
   function mint(address _account) external override onlyOwner returns (uint256 tokenId) {
     if (_supply == _maxSupply) {
       revert SUPPLY_EXHAUSTED();
@@ -362,6 +364,21 @@ contract NFTRewardDataSourceDelegate is
     _mint(_account, tokenId);
 
     _supply += 1;
+  }
+
+  /**
+    @notice This function is intenteded to allow NFT management for non-transferrable NFTs where the holder is unable to perform any action on the token, so we let the admin of the contract burn them.
+  */
+  function burn(address _account, uint256 _tokenId) external override onlyOwner {
+    if (transferrable) {
+      revert INVALID_REQUEST('Token is tranferrable');
+    }
+
+    if (!isOwner(_account, _tokenId)) {
+      revert INCORRECT_OWNER();
+    }
+
+    _burn(_tokenId);
   }
 
   /**
