@@ -83,7 +83,7 @@ describe('NFTRewardDataSourceDelegate::transfer(...)', function () {
 
     const transferTx = await jbNFTRewardDataSource
       .connect(owner)
-    ['transfer(uint256,address,uint256)'](PROJECT_ID, notOwner.address, tokenId);
+    ['transfer(address,uint256)'](notOwner.address, tokenId);
 
     await expect(transferTx)
       .to.emit(jbNFTRewardDataSource, 'Transfer')
@@ -95,7 +95,7 @@ describe('NFTRewardDataSourceDelegate::transfer(...)', function () {
     expect(await jbNFTRewardDataSource['totalOwnerBalance(address)'](notOwner.address)).to.equal(1);
     expect(await jbNFTRewardDataSource['isOwner(address,uint256)'](notOwner.address, tokenId)).to.equal(true);
 
-    await expect(await jbNFTRewardDataSource.connect(notOwner)['transferFrom(uint256,address,address,uint256)'](PROJECT_ID, notOwner.address, owner.address, tokenId))
+    await expect(await jbNFTRewardDataSource.connect(notOwner)['transferFrom(address,address,uint256)'](notOwner.address, owner.address, tokenId))
       .to.emit(jbNFTRewardDataSource, 'Transfer')
       .withArgs(notOwner.address, owner.address, tokenId);
 
@@ -109,7 +109,7 @@ describe('NFTRewardDataSourceDelegate::transfer(...)', function () {
     await expect(
       jbNFTRewardDataSource
         .connect(owner)
-      ['transfer(uint256,address,uint256)'](PROJECT_ID, ethers.constants.AddressZero, tokenId),
+      ['transfer(address,uint256)'](ethers.constants.AddressZero, tokenId),
     ).to.be.revertedWith('INVALID_RECIPIENT');
 
     await expect(jbNFTRewardDataSource.totalOwnerBalance(ethers.constants.AddressZero)).to.be.revertedWith('INVALID_ADDRESS');
@@ -122,7 +122,7 @@ describe('NFTRewardDataSourceDelegate::transfer(...)', function () {
     await expect(
       jbNFTRewardDataSource
         .connect(owner)
-      ['transfer(uint256,address,uint256)'](PROJECT_ID, notOwner.address, tokenId),
+      ['transfer(address,uint256)'](notOwner.address, tokenId),
     ).to.be.revertedWith('WRONG_FROM');
   });
 });

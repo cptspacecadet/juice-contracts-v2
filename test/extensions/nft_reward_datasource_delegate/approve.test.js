@@ -77,11 +77,11 @@ describe('NFTRewardDataSourceDelegate::approve(...)', function () {
     };
   }
 
-  it('Should approve and emit event if caller is owner', async function () {
+  it('Should approve and emit event if caller is owner', async () => {
     const { nftRewardDataSource, owner, notOwner } = await setup();
     const tokenId = 0;
 
-    const approveTx = await nftRewardDataSource.connect(owner)['approve(uint256,address,uint256)'](PROJECT_ID, notOwner.address, tokenId);
+    const approveTx = await nftRewardDataSource.connect(owner)['approve(address,uint256)'](notOwner.address, tokenId);
     await expect(approveTx).to.emit(nftRewardDataSource, 'Approval').withArgs(owner.address, notOwner.address, tokenId);
   });
 });
