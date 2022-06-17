@@ -5,7 +5,7 @@ import { deployMockContract } from '@ethereum-waffle/mock-contract';
 
 import jbDirectory from '../../../artifacts/contracts/JBDirectory.sol/JBDirectory.json';
 
-describe('NFTRewardDataSourceDelegate::didPay(...): tiered', function () {
+describe('NFTRewardDataSourceDelegate::didPay(...): open tier', () => {
   const PROJECT_ID = 2;
   const CURRENCY_ETH = '0x000000000000000000000000000000000000EEEe'; // JBCurrencies.ETH
   const halfEth = ethers.utils.parseEther('0.5');
@@ -35,15 +35,20 @@ describe('NFTRewardDataSourceDelegate::didPay(...): tiered', function () {
     await mockJbDirectory.mock.isTerminalOf.withArgs(PROJECT_ID, beneficiary.address).returns(false);
 
     const rewardTiers = [
-      { contributionFloor: tier1Floor, idCeiling: 1001, remainingAllowance: 1000 },
-      { contributionFloor: tier2Floor, idCeiling: 1501, remainingAllowance: 500 },
-      { contributionFloor: tier3Floor, idCeiling: 1511, remainingAllowance: 10 }
+      { contributionFloor: tier1Floor },
+      { contributionFloor: tier2Floor },
+      { contributionFloor: tier3Floor }
     ];
 
-    const nftRewardTieredPriceResolverFactory = await ethers.getContractFactory('TieredPriceResolver', deployer);
-    const nftRewardTieredPriceResolver = await nftRewardTieredPriceResolverFactory
+    const priceResolverFactory = await ethers.getContractFactory('OpenTieredPriceResolver', deployer);
+    const priceResolver = await priceResolverFactory
       .connect(deployer)
-      .deploy(ethToken, '100000000000', 2, rewardTiers);
+      .deploy(ethToken, rewardTiers);
+
+    const uriResolverFactory = await ethers.getContractFactory('OpenTieredTokenUriResolver', deployer);
+    const uriResolver = await uriResolverFactory
+      .connect(deployer)
+      .deploy('ipfs://token_uri/');
 
     const jbNFTRewardDataSourceFactory = await ethers.getContractFactory('NFTRewardDataSourceDelegate', deployer);
     jbNFTRewardDataSource = await jbNFTRewardDataSourceFactory
@@ -56,10 +61,10 @@ describe('NFTRewardDataSourceDelegate::didPay(...): tiered', function () {
         NFT_NAME,
         NFT_SYMBOL,
         NFT_URI,
-        ethers.constants.AddressZero,
+        uriResolver.address,
         NFT_METADATA,
         ethers.constants.AddressZero,
-        nftRewardTieredPriceResolver.address
+        priceResolver.address
       );
   });
 
@@ -74,7 +79,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...): tiered', function () {
       preferClaimedTokens: true,
       memo: '',
       metadata: '0x42'
-    })).to.emit(jbNFTRewardDataSource, 'Transfer').withArgs(ethers.constants.AddressZero, beneficiary.address, 1);
+    })).to.emit(jbNFTRewardDataSource, 'Transfer');
   });
 
   it('Should mint token if exceeding tier 3 contribution parameters', async () => {
@@ -88,7 +93,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...): tiered', function () {
       preferClaimedTokens: true,
       memo: '',
       metadata: '0x42'
-    })).to.emit(jbNFTRewardDataSource, 'Transfer').withArgs(ethers.constants.AddressZero, beneficiary.address, 1501);
+    })).to.emit(jbNFTRewardDataSource, 'Transfer');
   });
 
   it('Should mint token if meeting tier 3 contribution parameters', async () => {
@@ -102,7 +107,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...): tiered', function () {
       preferClaimedTokens: true,
       memo: '',
       metadata: '0x42'
-    })).to.emit(jbNFTRewardDataSource, 'Transfer').withArgs(ethers.constants.AddressZero, beneficiary.address, 1501);
+    })).to.emit(jbNFTRewardDataSource, 'Transfer');
   });
 
   it('Should not mint token if below min contribution', async () => {
@@ -121,34 +126,34 @@ describe('NFTRewardDataSourceDelegate::didPay(...): tiered', function () {
 
   it('fail to deploy: INVALID_PRICE_SORT_ORDER', async () => {
     const unsortedRewardTiers = [
-      { contributionFloor: tier1Floor, idCeiling: 1001, remainingAllowance: 1000 },
-      { contributionFloor: tier3Floor, idCeiling: 1511, remainingAllowance: 10 },
-      { contributionFloor: tier2Floor, idCeiling: 1501, remainingAllowance: 500 }
+      { contributionFloor: tier1Floor },
+      { contributionFloor: tier3Floor },
+      { contributionFloor: tier2Floor }
     ];
 
-    const nftRewardTieredPriceResolverFactory = await ethers.getContractFactory('TieredPriceResolver', deployer);
+    const priceResolverFactory = await ethers.getContractFactory('OpenTieredPriceResolver', deployer);
 
-    await expect(nftRewardTieredPriceResolverFactory.deploy(ethToken, '100000000000', 2, unsortedRewardTiers))
+    await expect(priceResolverFactory.deploy(ethToken, unsortedRewardTiers))
       .to.be.revertedWith('INVALID_PRICE_SORT_ORDER(2)');
   });
 
   it('test non-mint results', async () => {
     const rewardTiers = [
-      { contributionFloor: tier1Floor, idCeiling: 1001, remainingAllowance: 1000 },
-      { contributionFloor: tier2Floor, idCeiling: 1501, remainingAllowance: 500 },
-      { contributionFloor: tier3Floor, idCeiling: 1511, remainingAllowance: 10 }
+      { contributionFloor: tier1Floor },
+      { contributionFloor: tier2Floor },
+      { contributionFloor: tier3Floor }
     ];
 
-    const nftRewardTieredPriceResolverFactory = await ethers.getContractFactory('TieredPriceResolver', deployer);
-    const nftRewardTieredPriceResolver = await nftRewardTieredPriceResolverFactory.deploy(ethToken, 0, 0, rewardTiers);
+    const priceResolverFactory = await ethers.getContractFactory('OpenTieredPriceResolver', deployer);
+    const priceResolver = await priceResolverFactory.deploy(ethToken, rewardTiers);
 
     const invalidTokenContribution = { token: ethers.constants.AddressZero, value: 0, decimals: 18, currency: ethers.constants.AddressZero };
-    let tokenId = await nftRewardTieredPriceResolver.callStatic.validateContribution(beneficiary.address, invalidTokenContribution, ethers.constants.AddressZero);
+    let tokenId = await priceResolver.callStatic.validateContribution(beneficiary.address, invalidTokenContribution, ethers.constants.AddressZero);
 
     await expect(tokenId).to.eq(0);
 
     const validContribution = { token: ethToken, value: 0, decimals: 18, currency: CURRENCY_ETH };
-    tokenId = await nftRewardTieredPriceResolver.callStatic.validateContribution(beneficiary.address, validContribution, ethers.constants.AddressZero);
+    tokenId = await priceResolver.callStatic.validateContribution(beneficiary.address, validContribution, ethers.constants.AddressZero);
 
     await expect(tokenId).to.eq(0);
   });

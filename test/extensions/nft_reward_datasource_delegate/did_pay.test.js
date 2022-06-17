@@ -7,28 +7,31 @@ import jbDirectory from '../../../artifacts/contracts/JBDirectory.sol/JBDirector
 
 describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
   const PROJECT_ID = 2;
-  const NFT_NAME = 'Reward NFT';
-  const NFT_SYMBOL = 'RN';
-  const NFT_URI = 'ipfs://content_base';
-  const NFT_METADATA = 'ipfs://metadata';
   const CURRENCY_ETH = 1;
   const ETH_TO_PAY = ethers.utils.parseEther('1');
   const ethToken = ethers.constants.AddressZero;
 
-  async function setup() {
-    let [deployer, projectTerminal, beneficiary, ...accounts] = await ethers.getSigners();
+  let projectTerminal;
+  let beneficiary;
+  let jbNFTRewardDataSource;
 
-    let [
-      mockJbDirectory,
-    ] = await Promise.all([
-      deployMockContract(deployer, jbDirectory.abi),
-    ]);
+  beforeEach(async () => {
+    const NFT_NAME = 'Reward NFT';
+    const NFT_SYMBOL = 'RN';
+    const NFT_URI = 'ipfs://content_base';
+    const NFT_METADATA = 'ipfs://metadata';
+    let deployer;
+    let accounts;
+
+    [deployer, projectTerminal, beneficiary, ...accounts] = await ethers.getSigners();
+
+    const mockJbDirectory = await deployMockContract(deployer, jbDirectory.abi)
 
     await mockJbDirectory.mock.isTerminalOf.withArgs(PROJECT_ID, projectTerminal.address).returns(true);
     await mockJbDirectory.mock.isTerminalOf.withArgs(PROJECT_ID, beneficiary.address).returns(false);
 
     const jbNFTRewardDataSourceFactory = await ethers.getContractFactory('NFTRewardDataSourceDelegate', deployer);
-    const jbNFTRewardDataSource = await jbNFTRewardDataSourceFactory
+    jbNFTRewardDataSource = await jbNFTRewardDataSourceFactory
       .connect(deployer)
       .deploy(
         PROJECT_ID,
@@ -43,18 +46,9 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
         ethers.constants.AddressZero,
         ethers.constants.AddressZero
       );
+  });
 
-    return {
-      projectTerminal,
-      beneficiary,
-      accounts,
-      jbNFTRewardDataSource,
-    };
-  }
-
-  it(`Should mint token if meeting contribution parameters`, async function () {
-    const { jbNFTRewardDataSource, projectTerminal, beneficiary } = await setup();
-
+  it(`Should mint token if meeting contribution parameters`, async () => {
     await expect(jbNFTRewardDataSource.connect(projectTerminal).didPay({
       payer: beneficiary.address,
       projectId: PROJECT_ID,
@@ -68,9 +62,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
     })).to.emit(jbNFTRewardDataSource, 'Transfer').withArgs(ethers.constants.AddressZero, beneficiary.address, 0);
   });
 
-  it(`Should not mint token if exceeding max supply`, async function () {
-    const { jbNFTRewardDataSource, projectTerminal, beneficiary } = await setup();
-
+  it(`Should not mint token if exceeding max supply`, async () => {
     await jbNFTRewardDataSource.connect(projectTerminal).didPay({
       payer: beneficiary.address,
       projectId: PROJECT_ID,
@@ -96,9 +88,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
     })).not.to.emit(jbNFTRewardDataSource, 'Transfer');
   });
 
-  it(`Should not mint token if contribution below limit`, async function () {
-    const { jbNFTRewardDataSource, projectTerminal, beneficiary } = await setup();
-
+  it(`Should not mint token if contribution below limit`, async () => {
     await expect(jbNFTRewardDataSource.connect(projectTerminal).didPay({
       payer: beneficiary.address,
       projectId: PROJECT_ID,
@@ -112,9 +102,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
     })).not.to.emit(jbNFTRewardDataSource, 'Transfer');
   });
 
-  it(`Should not mint token if not called from terminal`, async function () {
-    const { jbNFTRewardDataSource, beneficiary } = await setup();
-
+  it(`Should not mint token if not called from terminal`, async () => {
     await expect(jbNFTRewardDataSource.connect(beneficiary).didPay({
       payer: beneficiary.address,
       projectId: PROJECT_ID,
@@ -129,9 +117,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
 
   });
 
-  it(`Should not mint project tokens on payment`, async function () {
-    const { jbNFTRewardDataSource, projectTerminal, beneficiary } = await setup();
-
+  it(`Should not mint project tokens on payment`, async () => {
     await jbNFTRewardDataSource.payParams({
       terminal: projectTerminal.address,
       payer: beneficiary.address,
@@ -146,9 +132,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
     });
   });
 
-  it(`Should not redeem NFTs for ether balance`, async function () {
-    const { jbNFTRewardDataSource, projectTerminal, beneficiary } = await setup();
-
+  it(`Should not redeem NFTs for ether balance`, async () => {
     await jbNFTRewardDataSource.didRedeem({
       holder: beneficiary.address,
       projectId: PROJECT_ID,
@@ -177,9 +161,7 @@ describe('NFTRewardDataSourceDelegate::didPay(...)', function () {
     });
   });
 
-  it(`Test supportsInterface()`, async function () {
-    const { jbNFTRewardDataSource } = await setup();
-
+  it(`Test supportsInterface()`, async () => {
     let match = await jbNFTRewardDataSource.supportsInterface(0x599064e9); // IJBFundingCycleDataSource
     expect(match).to.equal(true);
 
