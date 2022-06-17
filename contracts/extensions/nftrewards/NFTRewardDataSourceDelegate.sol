@@ -5,19 +5,19 @@ import '@openzeppelin/contracts/access/Ownable.sol';
 import '@openzeppelin/contracts/utils/Strings.sol';
 import {ERC721 as ERC721Rari} from '@rari-capital/solmate/src/tokens/ERC721.sol';
 
-import '../interfaces/IJBDirectory.sol';
-import '../interfaces/IJBFundingCycleDataSource.sol';
-import '../interfaces/IJBPayDelegate.sol';
-import '../interfaces/IJBRedemptionDelegate.sol';
-import '../interfaces/extensions/INFTRewardDataSourceDelegate.sol';
-import '../interfaces/extensions/IPriceResolver.sol';
-import '../interfaces/extensions/IToken721UriResolver.sol';
-import '../interfaces/extensions/ITokenSupplyDetails.sol';
+import '../../interfaces/IJBDirectory.sol';
+import '../../interfaces/IJBFundingCycleDataSource.sol';
+import '../../interfaces/IJBPayDelegate.sol';
+import '../../interfaces/IJBRedemptionDelegate.sol';
+import '../../interfaces/extensions/INFTRewardDataSourceDelegate.sol';
+import '../../interfaces/extensions/IPriceResolver.sol';
+import '../../interfaces/extensions/IToken721UriResolver.sol';
+import '../../interfaces/extensions/ITokenSupplyDetails.sol';
 
-import '../structs/JBDidPayData.sol';
-import '../structs/JBDidRedeemData.sol';
-import '../structs/JBRedeemParamsData.sol';
-import '../structs/JBTokenAmount.sol';
+import '../../structs/JBDidPayData.sol';
+import '../../structs/JBDidRedeemData.sol';
+import '../../structs/JBRedeemParamsData.sol';
+import '../../structs/JBTokenAmount.sol';
 
 /**
   @title Juicebox data source delegate that offers project contributors NFTs.

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.6;
 
-import '../structs/JBTokenAmount.sol';
-import '../interfaces/extensions/IPriceResolver.sol';
-import '../interfaces/extensions/ITokenSupplyDetails.sol';
+import '../../structs/JBTokenAmount.sol';
+import '../../interfaces/extensions/IPriceResolver.sol';
+import '../../interfaces/extensions/ITokenSupplyDetails.sol';
 
 /**
   @dev Token id 0 has special meaning in NFTRewardDataSourceDelegate where minting will be skipped.
   @dev An example tier collecting might look like this:
-  [ { contributionFloor: 1 ether, idCeiling: 1001, remainingAllowance: 1000 }, { contributionFloor: 1 ether, idCeiling: 1501, remainingAllowance: 500 }, { contributionFloor: 1 ether, idCeiling: 1511, remainingAllowance: 10 }]
+  [ { contributionFloor: 1 ether, idCeiling: 1001, remainingAllowance: 1000 }, { contributionFloor: 5 ether, idCeiling: 1501, remainingAllowance: 500 }, { contributionFloor: 10 ether, idCeiling: 1511, remainingAllowance: 10 }]
  */
 struct RewardTier {
   /** @notice Minimum contribution to qualify for this tier. */
