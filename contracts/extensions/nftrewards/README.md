@@ -62,3 +62,19 @@ It is necessary for the tiers to be sorted by contribution amount in the constru
 ### Deployment
 
 It is necessary to deploy the `TieredPriceResolver` then `NFTRewardDataSourceDelegate` and then assign the latter to a funding cycle of the project. In the unbounded example, `OpenTieredPriceResolver` and `OpenTieredTokenUriResolver` need to deployed first, passed to the deployment of `NFTRewardDataSourceDelegate` and then assigned to a funding cycle.
+
+### Post-deployment Admin Actions
+
+One of the deployment parameters is an address that can be used to administer the contract. It should be set to an EOA or a multisig address capable of performing arbitrary operations. This account will be able to perform the following actions.
+
+#### Mint
+
+The admin account can issue tokens to any address without payment. Use of this function is not recommended. Currently it will mint the next token id to the provided address which may not mesh well with whatever price resolver the token may be using.
+
+#### Prevent Token Transfers
+
+There are use-cases where it's necessary to block reward NFT token holders from transferring them. This can be done after the token contract is deployed by calling `setTransferrable(false)`. At this point the admin will also be able to `burn` tokens from holders.
+
+#### URI Management
+
+There are two URIs associated with the contract: token URI and contract URI. The former is used to determine the location of the specific asset and the latter should contain OpenSea-style metadata. These can be set with either `setTokenUriResolver` or `setTokenUri` and `setContractUri`. `setTokenUriResolver` is used for complex cases where appending the token id to a base URI is not enough. All of these parameters are also part of the constructor.
