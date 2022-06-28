@@ -12,7 +12,41 @@ import './AbstractNFTRewardDelegate.sol';
 
   @dev Keep in mind that this PayDelegate and RedeemDelegate implementation will simply pass through the weight and reclaimAmount it is called with.
  */
-abstract contract NFTRewardDataSourceDelegate is AbstractNFTRewardDelegate {
+contract SimpleNFTRewardDelegate is AbstractNFTRewardDelegate {
+  /**
+    @notice Minimum contribution amount to trigger NFT distribution, denominated in some currency defined as part of this object.
+
+    @dev Only one NFT will be minted for any amount at or above this value.
+  */
+  JBTokenAmount internal _minContribution;
+
+  constructor(
+    uint256 projectId,
+    IJBDirectory directory,
+    uint256 maxSupply,
+    string memory _name,
+    string memory _symbol,
+    string memory _uri,
+    IToken721UriResolver _tokenUriResolverAddress,
+    string memory _contractMetadataUri,
+    address _admin,
+    JBTokenAmount memory minContribution
+  )
+    AbstractNFTRewardDelegate(
+      projectId,
+      directory,
+      maxSupply,
+      _name,
+      _symbol,
+      _uri,
+      _tokenUriResolverAddress,
+      _contractMetadataUri,
+      _admin
+    )
+  {
+    _minContribution = minContribution;
+  }
+
   /**
    */
   function validateContribution(address account, JBTokenAmount calldata contribution)

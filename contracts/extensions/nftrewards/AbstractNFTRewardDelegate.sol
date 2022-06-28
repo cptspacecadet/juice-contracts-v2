@@ -10,7 +10,6 @@ import '../../interfaces/IJBFundingCycleDataSource.sol';
 import '../../interfaces/IJBPayDelegate.sol';
 import '../../interfaces/IJBRedemptionDelegate.sol';
 import '../../interfaces/extensions/INFTRewardDataSourceDelegate.sol';
-import '../../interfaces/extensions/IPriceResolver.sol';
 import '../../interfaces/extensions/IToken721UriResolver.sol';
 import '../../interfaces/extensions/ITokenSupplyDetails.sol';
 
@@ -66,13 +65,6 @@ abstract contract AbstractNFTRewardDelegate is
   IJBDirectory private _directory;
 
   /**
-    @notice Minimum contribution amount to trigger NFT distribution, denominated in some currency defined as part of this object.
-
-    @dev Only one NFT will be minted for any amount at or above this value.
-  */
-  JBTokenAmount internal _minContribution;
-
-  /**
     @notice
     NFT mint cap as part of this configuration.
   */
@@ -103,41 +95,34 @@ abstract contract AbstractNFTRewardDelegate is
   */
   string private _contractUri;
 
-  IPriceResolver private priceResolver;
-
   bool private transferrable;
 
   /**
     @param projectId JBX project id this reward is associated with.
     @param directory JBX directory.
     @param maxSupply Total number of reward tokens to distribute.
-    @param minContribution Minimum contribution amount to be eligible for this reward.
     @param _name The name of the token.
     @param _symbol The symbol that the token should be represented by.
     @param _uri Token base URI.
     @param _tokenUriResolverAddress Custom uri resolver.
     @param _contractMetadataUri Contract metadata uri.
     @param _admin Set an alternate owner.
-    @param _priceResolver Custom uri resolver.
   */
   constructor(
     uint256 projectId,
     IJBDirectory directory,
     uint256 maxSupply,
-    JBTokenAmount memory minContribution,
     string memory _name,
     string memory _symbol,
     string memory _uri,
     IToken721UriResolver _tokenUriResolverAddress,
     string memory _contractMetadataUri,
-    address _admin,
-    IPriceResolver _priceResolver
+    address _admin
   ) ERC721Rari(_name, _symbol) {
     // JBX
     _projectId = projectId;
     _directory = directory;
     _maxSupply = maxSupply;
-    _minContribution = minContribution;
 
     // ERC721
     _baseUri = _uri;
@@ -147,8 +132,6 @@ abstract contract AbstractNFTRewardDelegate is
     if (_admin != address(0)) {
       _transferOwnership(_admin);
     }
-
-    priceResolver = _priceResolver;
 
     transferrable = true;
   }
