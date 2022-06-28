@@ -28,7 +28,7 @@ import '../../structs/JBTokenAmount.sol';
 
   @dev Keep in mind that this PayDelegate and RedeemDelegate implementation will simply pass through the weight and reclaimAmount it is called with.
  */
-contract NFTRewardDataSourceDelegate is
+abstract contract AbstractNFTRewardDelegate is
   ERC721Rari,
   Ownable,
   INFTRewardDataSourceDelegate,
@@ -70,20 +70,20 @@ contract NFTRewardDataSourceDelegate is
 
     @dev Only one NFT will be minted for any amount at or above this value.
   */
-  JBTokenAmount private _minContribution;
+  JBTokenAmount internal _minContribution;
 
   /**
     @notice
     NFT mint cap as part of this configuration.
   */
-  uint256 private _maxSupply;
+  uint256 internal _maxSupply;
 
   /**
     @notice Current supply.
 
     @dev Also used to check if rewards supply was exhausted and as nextTokenId
   */
-  uint256 private _supply;
+  uint256 internal _supply;
 
   /**
     @notice
@@ -208,26 +208,12 @@ contract NFTRewardDataSourceDelegate is
       return;
     }
 
-    if (address(priceResolver) != address(0)) {
-      uint256 tokenId = priceResolver.validateContribution(_data.beneficiary, _data.amount, this);
-
-      if (tokenId == 0) {
-        return;
-      }
-
-      _mint(_data.beneficiary, tokenId);
-
-      _supply += 1;
-    } else if (
-      (_data.amount.value >= _minContribution.value &&
-        _data.amount.token == _minContribution.token) || _minContribution.value == 0
-    ) {
-      uint256 tokenId = _supply;
-      _mint(_data.beneficiary, tokenId);
-
-      _supply += 1;
-    }
+    validateContribution(_data.beneficiary, _data.amount);
   }
+
+  function validateContribution(address account, JBTokenAmount calldata contribution)
+    internal
+    virtual;
 
   //*********************************************************************//
   // -------------------- IJBRedemptionDelegate ------------------------ //
