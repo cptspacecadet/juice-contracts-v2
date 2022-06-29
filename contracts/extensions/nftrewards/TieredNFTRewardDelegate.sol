@@ -6,11 +6,18 @@ import './AbstractNFTRewardDelegate.sol';
 /**
   @dev Token id 0 has special meaning in NFTRewardDataSourceDelegate where minting will be skipped.
   @dev An example tier collecting might look like this:
-  [ { contributionFloor: 1 ether }, { contributionFloor: 5 ether }, { contributionFloor: 10 ether } ]
+  [ { contributionFloor: 1 ether, idCeiling: 1001, remainingAllowance: 1000 }, { contributionFloor: 5 ether, idCeiling: 1501, remainingAllowance: 500 }, { contributionFloor: 10 ether, idCeiling: 1511, remainingAllowance: 10 }]
  */
-struct OpenRewardTier {
+struct RewardTier {
   /** @notice Minimum contribution to qualify for this tier. */
   uint256 contributionFloor;
+  /** @notice Highest token id in this tier. */
+  uint256 idCeiling;
+  /**
+    @notice Remaining number of tokens in this tier.
+    @dev Together with idCeiling this enables for consecutive, increasing token ids to be issued to contributors.
+  */
+  uint256 remainingAllowance;
 }
 
 //*********************************************************************//
@@ -30,20 +37,20 @@ error INVALID_ID_SORT_ORDER(uint256);
  */
 contract OpenTieredNFTRewardDelegate is AbstractNFTRewardDelegate {
   address public contributionToken;
-  OpenRewardTier[] public tiers;
+  uint256 public globalMintAllowance;
+  uint256 public userMintCap;
+  RewardTier[] public tiers;
 
   /**
-    @notice This price resolver allows project admins to define multiple reward tiers for contributions and issue NFTs to people who contribute at those levels. 
-
-    @dev This pride resolver requires a custom token uri resolver which is defined in OpenTieredTokenUriResolver.
+    @notice This reward delegate allows project admins to define multiple reward tiers for contributions and issue NFTs to people who contribute at those levels. It is also possible to limit total number of NFTs issues and total number of NFTs issued per account regardless of the contribution amount. Let's say the total number of NFTs defined in the tiers is 10k, the global mint cap can limit that number to 5000 across all tiers.
 
     @dev Tiers list must be sorted by floor otherwise contributors won't be rewarded properly.
-
-    @dev There is a limit of 255 tiers.
 
     @param _contributionToken Token used for contributions, use JBTokens.ETH to specify ether.
     @param _tiers Sorted tier collection.
    */
+  //@param _mintCap Global mint cap, this allows limiting total NFT supply in addition to the limits already defined in the tiers.
+  // @param _userMintCap Per-account mint cap.
   constructor(
     uint256 projectId,
     IJBDirectory directory,
@@ -55,7 +62,7 @@ contract OpenTieredNFTRewardDelegate is AbstractNFTRewardDelegate {
     string memory _contractMetadataUri,
     address _admin,
     address _contributionToken,
-    OpenRewardTier[] memory _tiers
+    RewardTier[] memory _tiers
   )
     AbstractNFTRewardDelegate(
       projectId,
@@ -70,10 +77,8 @@ contract OpenTieredNFTRewardDelegate is AbstractNFTRewardDelegate {
     )
   {
     contributionToken = _contributionToken;
-
-    if (_tiers.length > type(uint8).max) {
-      revert();
-    }
+    globalMintAllowance = type(uint256).max;
+    userMintCap = type(uint256).max;
 
     if (_tiers.length > 0) {
       tiers.push(_tiers[0]);
@@ -82,9 +87,24 @@ contract OpenTieredNFTRewardDelegate is AbstractNFTRewardDelegate {
           revert INVALID_PRICE_SORT_ORDER(i);
         }
 
+        if (_tiers[i].idCeiling - _tiers[i].remainingAllowance < _tiers[i - 1].idCeiling) {
+          revert INVALID_ID_SORT_ORDER(i);
+        }
+
         tiers.push(_tiers[i]);
       }
     }
+  }
+
+  /**
+    @notice Allows setting caps on the number of NFTs this delegate will distribute to contributors.
+
+    @param _mintCap Global mint cap. Total number of NFTs distributed will not exceed this number.
+    @param _userMintCap Per-user mint cap.
+   */
+  function setCaps(uint256 _mintCap, uint256 _userMintCap) public onlyOwner {
+    globalMintAllowance = _mintCap;
+    userMintCap = _userMintCap;
   }
 
   /**
@@ -101,14 +121,37 @@ contract OpenTieredNFTRewardDelegate is AbstractNFTRewardDelegate {
       return;
     }
 
+    if (globalMintAllowance == 0) {
+      return;
+    }
+
+    if (totalOwnerBalance(account) >= userMintCap) {
+      return;
+    }
+
     uint256 tokenId;
     for (uint256 i; i < tiers.length; i++) {
       if (
-        (tiers[i].contributionFloor <= contribution.value && i == tiers.length - 1) ||
-        (tiers[i].contributionFloor <= contribution.value &&
-          tiers[i + 1].contributionFloor > contribution.value)
+        tiers[i].contributionFloor <= contribution.value &&
+        i == tiers.length - 1 &&
+        tiers[i].remainingAllowance > 0
       ) {
-        tokenId = i | (uint248(uint256(keccak256(abi.encodePacked(account, block.number)))) << 8);
+        tokenId = tiers[i].idCeiling - tiers[i].remainingAllowance;
+        unchecked {
+          --tiers[i].remainingAllowance;
+          --globalMintAllowance;
+        }
+        break;
+      } else if (
+        tiers[i].contributionFloor <= contribution.value &&
+        tiers[i + 1].contributionFloor > contribution.value &&
+        tiers[i].remainingAllowance > 0
+      ) {
+        tokenId = tiers[i].idCeiling - tiers[i].remainingAllowance;
+        unchecked {
+          --tiers[i].remainingAllowance;
+          --globalMintAllowance;
+        }
         break;
       }
     }
