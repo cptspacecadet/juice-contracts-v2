@@ -113,7 +113,7 @@ contract OpenTieredNFTRewardDelegate is AbstractNFTRewardDelegate {
       }
     }
 
-    if (tokenId > 0) {
+    if (tokenId != 0) {
       _mint(account, tokenId);
 
       _supply += 1;

@@ -80,7 +80,7 @@ contract OpenTieredNFTRewardDelegate is AbstractNFTRewardDelegate {
     globalMintAllowance = type(uint256).max;
     userMintCap = type(uint256).max;
 
-    if (_tiers.length > 0) {
+    if (_tiers.length != 0) {
       tiers.push(_tiers[0]);
       for (uint256 i = 1; i < _tiers.length; i++) {
         if (_tiers[i].contributionFloor < _tiers[i - 1].contributionFloor) {
@@ -134,7 +134,7 @@ contract OpenTieredNFTRewardDelegate is AbstractNFTRewardDelegate {
       if (
         tiers[i].contributionFloor <= contribution.value &&
         i == tiers.length - 1 &&
-        tiers[i].remainingAllowance > 0
+        tiers[i].remainingAllowance != 0
       ) {
         tokenId = tiers[i].idCeiling - tiers[i].remainingAllowance;
         unchecked {
@@ -145,7 +145,7 @@ contract OpenTieredNFTRewardDelegate is AbstractNFTRewardDelegate {
       } else if (
         tiers[i].contributionFloor <= contribution.value &&
         tiers[i + 1].contributionFloor > contribution.value &&
-        tiers[i].remainingAllowance > 0
+        tiers[i].remainingAllowance != 0
       ) {
         tokenId = tiers[i].idCeiling - tiers[i].remainingAllowance;
         unchecked {
@@ -156,7 +156,7 @@ contract OpenTieredNFTRewardDelegate is AbstractNFTRewardDelegate {
       }
     }
 
-    if (tokenId > 0) {
+    if (tokenId != 0) {
       _mint(account, tokenId);
 
       _supply += 1;
