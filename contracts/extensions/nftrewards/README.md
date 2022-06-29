@@ -6,9 +6,9 @@ If added to an existing project via a funding cycle, NFT rewards can provide add
 
 ## Implementation
 
-`NFTRewardDataSourceDelegate` implements several Juicebox interfaces (`IJBFundingCycleDataSource`, `IJBPayDelegate`, `IJBRedemptionDelegate`) that make it possible to use it as a funding cycle data source. It also acts as an ERC721 reward token itself. The contract is highly configurable through constructor parameters. Note that this isn't meant to replace the ERC20 project token distribution.
+`AbstractNFTRewardDelegate` implements several Juicebox interfaces (`IJBFundingCycleDataSource`, `IJBPayDelegate`, `IJBRedemptionDelegate`) that make it possible to use it as a funding cycle data source. It also acts as an ERC721 reward token itself. The contract is highly configurable through constructor parameters. Note that this isn't meant to replace the ERC20 project token distribution.
 
-In its most basic configuration `NFTRewardDataSourceDelegate` will mint NFTs to participants contributing over some defined minimum and up to some number of NFTs. The constructor parameters are:
+This is an abstract contract, in its most basic implementation, `SimpleNFTRewardDelegate` will mint NFTs to participants contributing over some defined minimum and up to some number of NFTs. The constructor parameters are:
 
 - projectId: JBX project id of the project in question.
 - directory: Platform JBDirectory.
@@ -20,15 +20,12 @@ In its most basic configuration `NFTRewardDataSourceDelegate` will mint NFTs to 
 - _tokenUriResolverAddress: Token URI resolver, in the basic case this should be `address(0)`.
 - _contractMetadataUri: Location of OpenSea-style contract metadata.
 - _admin: EOA or multisig capable of executing arbitrary contract calls.
-- _priceResolver: For the basic case, set this to `address(0)`. In this case `maxSupply` and `minContribution` parameters will govern the mint.
 
 ## Example Uses
 
 ### Bounded Tiers
 
-`IPriceResolver` and `IToken721UriResolver` parameters add flexibility to how the `NFTRewardDataSourceDelegate` contract can be used. There are two sample implementations of the price resolver that allow project runners to reward contributors in tiers. For example, the higher the contribution the more rare the NFT the participant would get.
-
-`TieredPriceResolver` takes tier configuration that includes tier floor contribution amount, tier size and id definition. Consider this tier definition:
+`TieredNFTRewardDelegate` is a more complex implementation allowing for reward distribution in limited tiers. For example, the higher the contribution the more rare the NFT the participant would get. This contract takes tier configuration that includes tier floor contribution amount, tier size and id definition. Consider this tier definition:
 
 ```js
 [
@@ -37,15 +34,15 @@ In its most basic configuration `NFTRewardDataSourceDelegate` will mint NFTs to 
 ]
 ```
 
-This configuration will mint 1000 NFTs for contributors depositing more than 1 ether but below 5 and 500 NFTs for people contributing 5 or more. The combination of `idCeiling` and `remainingAllowance` will generate consecutive, increasing token ids. For example, the first deposit of 1 ether will receive token id `1001 - 1000`: 1. The second will get `1001 - 999`: 2, and so on. Token id 0 is interpreted by `NFTRewardDataSourceDelegate` as a do not mint instruction.
+This configuration will mint 1000 NFTs for contributors depositing more than 1 ether but below 5 and 500 NFTs for people contributing 5 or more. The combination of `idCeiling` and `remainingAllowance` will generate consecutive, increasing token ids. For example, the first deposit of 1 ether will receive token id `1001 - 1000`: 1. The second will get `1001 - 999`: 2, and so on. Token id 0 is interpreted by `AbstractNFTRewardDelegate` as a do not mint instruction.
 
-In addition to this `globalMintAllowance` and `userMintCap` constructor parameters provide the option of additional caps. For example, setting `globalMintAllowance` to 1000 in the above case will limit total number of issued NFTs to 1000 regardless of the tier they were minted in while still limiting the 5 ether + tier to 500 tokens. `userMintCap` can be used to limit how many NFT rewards a single account can get. To disable these limits them to `type(uint256).max`.
+In addition to this `globalMintAllowance` and `userMintCap` parameters provide the option of additional caps. They can be modified by the admin with `setCaps(uint256,uint256)`. For example, setting `globalMintAllowance` to 1000 in the above case will limit total number of issued NFTs to 1000 regardless of the tier they were minted in while still limiting the 5 ether + tier to 500 tokens. `userMintCap` can be used to limit how many NFT rewards a single account can get. By default, these limits are disabled by assigning them to `type(uint256).max`.
 
 It is necessary to pass the tier configuration into the constructor sorted by contribution amount and there should be no id range overlap.
 
 ### Unbounded Tiers
 
-Another, simpler and gas-cheaper example of a price resolver is `OpenTieredPriceResolver`, this contract comes with its own token URI resolver as well: `OpenTieredTokenUriResolver`. It is necessary to use them together or to implement another `IToken721UriResolver`. `OpenTieredPriceResolver` is a leaner version that removes caps and range limits. This reduces storage and call gas costs. Tier configuration might look like this:
+Another, simpler and gas-cheaper example of a price resolver is `OpenTieredNFTRewardDelegate`, this contract comes with its own token URI resolver as well: `OpenTieredTokenUriResolver`. It is necessary to use them together or to implement another `IToken721UriResolver`. `OpenTieredNFTRewardDelegate` is a leaner version that removes caps and range limits. This reduces storage and call gas costs. Tier configuration might look like this:
 
 ```js
 [
@@ -58,6 +55,10 @@ Another, simpler and gas-cheaper example of a price resolver is `OpenTieredPrice
 In this configuration anyone who deposits more than 1 ether, but less than 5 will get a tier-1 NFT, 5-10 tier-2 NFT and 10+ tier-3 NFT. There are no explicit limits on how many NFTs can be issued per tier. Practically however they're limited to `type(uint248).max`. The reason is that the tier is encoded in the low 8 bits of the token id. This is the reason for the custom token URI resolver. The URI resolver will parse the bottom 8 bits into an int and return an URI with that id. This means that many token ids will show the same content. The main content of the token id is derived from the contributor address and current block number. There is no collision check because the price resolver isn't aware if it's working with an ERC721 or 1155 type token.
 
 It is necessary for the tiers to be sorted by contribution amount in the constructor.
+
+### Customization
+
+`AbstractNFTRewardDelegate` already implements most of the functionality necessary to offer NFT rewards. It has Juicebox hooks, an ERC721 NFT implementation and some core functionality. To customize the functionality implementing contracts are expected to provide a single function: `validateContribution(address,JBTokenAmount`. This function will validate the `JBTokenAmount` contribution from the `address` and mint the token to that account if needed. This function must not `revert` as that will cause contribution failure. NFT rewards are meant to be optionals and must not prevent contribution deposit. Usage of `JBTokenAmount` allows implementing contracts to use non-ether "currencies". For example, `OpenTieredNFTRewardDelegate` has a parameter in the constructor to set the contribution token address. To use ether there is a Juicebox constant in `JBTokens.ETH`.
 
 ### Deployment
 
