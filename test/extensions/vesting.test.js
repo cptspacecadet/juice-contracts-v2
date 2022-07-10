@@ -87,7 +87,7 @@ describe('Vesting Tests', () => {
     await ethers.provider.send('evm_mine', []);
 
     await expect(vesting.connect(accounts[1]).distribute(planId)).to.emit(vesting, 'DistributeAward')
-      .withArgs(planId, accounts[0].address, token.address, periodicGrant, periodicGrant, 0);
+      .withArgs(planId, accounts[0].address, token.address, periodicGrant, periodicGrant, totalGrant - periodicGrant);
 
     expect(await token.balanceOf(accounts[0].address)).to.equal(periodicGrant);
 
@@ -100,7 +100,7 @@ describe('Vesting Tests', () => {
     await ethers.provider.send('evm_mine', []);
 
     await expect(vesting.connect(accounts[1]).distribute(planId)).to.emit(vesting, 'DistributeAward')
-      .withArgs(planId, accounts[0].address, token.address, periodicGrant, periodicGrant * 3, 0);
+      .withArgs(planId, accounts[0].address, token.address, periodicGrant, periodicGrant * 3, totalGrant - periodicGrant * 4);
 
     expect(await token.balanceOf(accounts[0].address)).to.equal(periodicGrant * 4);
 
@@ -108,6 +108,88 @@ describe('Vesting Tests', () => {
     expect(details[0]['amount']).to.equal(periodicGrant);
   });
 
+  it('Simple Termination Test', async () => {
+    token.connect(deployer).approve(vesting.address, '1000');
+
+    const headLevel = await ethers.provider.getBlockNumber();
+    const headBlock = await ethers.provider.getBlock(headLevel);
+
+    const vestingPeriodSeconds = 60 * 60 * 1;
+    const periodicGrant = 100;
+    const periods = 10;
+    const totalGrant = periodicGrant * periods;
+    const cliffSeconds = headBlock.timestamp + vestingPeriodSeconds;
+
+    const planId = getPlanId(accounts[1].address, deployer.address, token.address, periodicGrant, cliffSeconds, vestingPeriodSeconds, periods);
+
+    const initialSponsorBalance = await token.balanceOf(deployer.address);
+
+    await expect(vesting.connect(deployer).create(
+      accounts[1].address,
+      token.address,
+      periodicGrant,
+      cliffSeconds,
+      vestingPeriodSeconds,
+      periods,
+      'Simple Vest'
+    )).to.emit(vesting, 'CreatePlan')
+      .withArgs(accounts[1].address, deployer.address, token.address, periodicGrant, cliffSeconds, vestingPeriodSeconds, periods, 'Simple Vest', planId);
+
+    await ethers.provider.send('evm_increaseTime', [vestingPeriodSeconds * 6 + 10]);
+    await ethers.provider.send('evm_mine', []);
+
+    await expect(vesting.connect(deployer).terminate(planId)).to.emit(vesting, 'DistributeAward')
+      .withArgs(planId, accounts[1].address, token.address, periodicGrant, periodicGrant * 6, totalGrant - periodicGrant * 6);
+
+    expect(await token.balanceOf(accounts[1].address)).to.equal(periodicGrant * 6);
+
+    const updatedSponsorBalance = await token.balanceOf(deployer.address);
+    expect(updatedSponsorBalance).to.eq(initialSponsorBalance - periodicGrant * 6);
+  });
+
+  it('Partial Claim Termination Test', async () => {
+    token.connect(deployer).approve(vesting.address, '1000');
+
+    const headLevel = await ethers.provider.getBlockNumber();
+    const headBlock = await ethers.provider.getBlock(headLevel);
+
+    const vestingPeriodSeconds = 60 * 60 * 1;
+    const periodicGrant = 100;
+    const periods = 10;
+    const totalGrant = periodicGrant * periods;
+    const cliffSeconds = headBlock.timestamp + vestingPeriodSeconds;
+
+    const planId = getPlanId(accounts[1].address, deployer.address, token.address, periodicGrant, cliffSeconds, vestingPeriodSeconds, periods);
+
+    const initialRecipientBalance = await token.balanceOf(accounts[1].address);
+    const initialSponsorBalance = await token.balanceOf(deployer.address);
+
+    await expect(vesting.connect(deployer).create(
+      accounts[1].address,
+      token.address,
+      periodicGrant,
+      cliffSeconds,
+      vestingPeriodSeconds,
+      periods,
+      'Simple Vest'
+    )).to.emit(vesting, 'CreatePlan')
+      .withArgs(accounts[1].address, deployer.address, token.address, periodicGrant, cliffSeconds, vestingPeriodSeconds, periods, 'Simple Vest', planId);
+
+    await ethers.provider.send('evm_increaseTime', [vestingPeriodSeconds + 10]);
+    await ethers.provider.send('evm_mine', []);
+
+    await expect(vesting.connect(accounts[1]).distribute(planId)).to.emit(vesting, 'DistributeAward')
+      .withArgs(planId, accounts[1].address, token.address, periodicGrant, periodicGrant, totalGrant - periodicGrant);
+
+    await ethers.provider.send('evm_increaseTime', [vestingPeriodSeconds * 5 + 10]);
+    await ethers.provider.send('evm_mine', []);
+
+    await expect(vesting.connect(deployer).terminate(planId)).to.emit(vesting, 'DistributeAward')
+      .withArgs(planId, accounts[1].address, token.address, periodicGrant, periodicGrant * 5, totalGrant - periodicGrant * 6);
+
+    expect(await token.balanceOf(accounts[1].address)).to.equal(Number(initialRecipientBalance) + periodicGrant * 6);
+    expect(await token.balanceOf(deployer.address)).to.equal(Number(initialSponsorBalance) - periodicGrant * 6);
+  });
 });
 
 function getPlanId(recipient, sponsor, token, amount, cliff, periodDuration, periods) {

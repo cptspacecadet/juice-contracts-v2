@@ -133,7 +133,14 @@ contract VestTokens is IVestTokens {
       revert UNAUTHORIZED();
     }
 
-    // TODO: distribute pending amount
+    if (block.timestamp >= plan.cliff && distributions[_id] + plan.period < block.timestamp) {
+      _distribute(_id, plan);
+    }
+
+    uint256 remainingBalance = unvestedBalance(_id);
+    if (!plan.token.transfer(plan.sponsor, remainingBalance)) {
+      revert DISTRIBUTION_FAILED();
+    }
 
     plans[_id].duration = 0;
 
@@ -161,21 +168,7 @@ contract VestTokens is IVestTokens {
       revert INCOMPLETE_PERIOD();
     }
 
-    uint256 elapsedPeriods = ((block.timestamp - plan.cliff) / plan.period) + 1;
-    uint256 elapsedPeriodsBoundary = elapsedPeriods * plan.period + plan.cliff;
-    uint256 pendingPeriods = elapsedPeriods;
-    if (distributions[_id] != 0) {
-      pendingPeriods = (elapsedPeriodsBoundary - distributions[_id]) / plan.period;
-    }
-    uint256 distribution = plan.amount * pendingPeriods;
-
-    distributions[_id] = elapsedPeriodsBoundary;
-
-    if (!plan.token.transfer(plan.receiver, distribution)) {
-      revert DISTRIBUTION_FAILED();
-    }
-
-    emit DistributeAward(_id, plan.receiver, plan.token, plan.amount, distribution, 0); // TODO: remaining
+    _distribute(_id, plan);
   }
 
   /// views
@@ -188,7 +181,50 @@ contract VestTokens is IVestTokens {
     return (plans[_id], distributions[_id]);
   }
 
-  function remainingBalance(uint256 _id) public view {
-    // TODO
+  function unvestedBalance(uint256 _id) public view returns (uint256 remainingBalance) {
+    if (plans[_id].amount == 0) {
+      revert INVALID_PLAN();
+    }
+
+    VestingPlan memory plan = plans[_id];
+
+    uint256 elapsedPeriods = ((block.timestamp - plan.cliff) / plan.period) + 1;
+    uint256 remainingPeriods = plan.duration - elapsedPeriods;
+    remainingBalance = remainingPeriods * plan.amount;
+  }
+
+  function _distributionAmount(uint256 _id, VestingPlan memory plan)
+    private
+    view
+    returns (uint256 distribution, uint256 elapsedPeriodsBoundary)
+  {
+    uint256 elapsedPeriods = ((block.timestamp - plan.cliff) / plan.period) + 1;
+    elapsedPeriodsBoundary = elapsedPeriods * plan.period + plan.cliff;
+    uint256 pendingPeriods = elapsedPeriods;
+    if (distributions[_id] != 0) {
+      pendingPeriods = (elapsedPeriodsBoundary - distributions[_id]) / plan.period;
+    }
+    distribution = plan.amount * pendingPeriods;
+  }
+
+  function _distribute(uint256 _id, VestingPlan memory _plan) private {
+    (uint256 distribution, uint256 elapsedPeriodsBoundary) = _distributionAmount(_id, _plan);
+
+    distributions[_id] = elapsedPeriodsBoundary;
+
+    if (!_plan.token.transfer(_plan.receiver, distribution)) {
+      revert DISTRIBUTION_FAILED();
+    }
+
+    uint256 remainingBalance = unvestedBalance(_id);
+
+    emit DistributeAward(
+      _id,
+      _plan.receiver,
+      _plan.token,
+      _plan.amount,
+      distribution,
+      remainingBalance
+    ); // TODO: remaining
   }
 }
