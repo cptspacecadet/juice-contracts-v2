@@ -99,10 +99,12 @@ contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
     uint256[] memory updatedRoles = new uint256[](currentRoles.length - 1);
     bool found;
     for (uint256 i; i < currentRoles.length; ) {
-      if (currentRoles[i] != roleId) {
-        updatedRoles[i] = currentRoles[i];
-      } else if (found) {
+      if (found) {
         updatedRoles[i - 1] = currentRoles[i];
+      } else if (currentRoles[i] != roleId) {
+        updatedRoles[i] = currentRoles[i];
+      } else if (currentRoles[i] == roleId) {
+        found = true;
       }
       ++i;
     }
@@ -170,10 +172,12 @@ contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
     uint256[] memory updatedRoles = new uint256[](currentRoles.length - 1);
     bool found;
     for (uint256 i; i < currentRoles.length; ) {
-      if (currentRoles[i] != roleId) {
-        updatedRoles[i] = currentRoles[i];
-      } else if (found) {
+      if (found) {
         updatedRoles[i - 1] = currentRoles[i];
+      } else if (currentRoles[i] != roleId) {
+        updatedRoles[i] = currentRoles[i];
+      } else if (currentRoles[i] == roleId) {
+        found = true;
       }
       ++i;
     }
