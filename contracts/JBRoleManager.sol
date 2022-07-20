@@ -9,9 +9,9 @@ import './interfaces/IJBRoleManager.sol';
 import './libraries/JBOperations.sol';
 
 /**
-  @title blah
+  @title User role directory
 
-  @notice Different from JBOperatorStore, this contract ...
+  @notice Different from JBOperatorStore, this contract allows project owners and other permissioned users to create named roles. This allows for chain-based ACL that can be used both in contracts and off-chain.
  */
 contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
   //*********************************************************************//
@@ -24,7 +24,14 @@ contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
   // --------------------- public stored properties -------------------- //
   //*********************************************************************//
 
+  /**
+    @notice Juicebox directory reference for project owner authentication.
+   */
   IJBDirectory public immutable directory;
+
+  /**
+    @notice Juicebox projects reference for project owner authentication.
+   */
   IJBProjects public immutable projects;
 
   /**
@@ -56,8 +63,9 @@ contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
   //*********************************************************************//
 
   /**
-    @param _operatorStore A contract storing operator assignments.
-    @param _projects A contract which mints ERC-721's that represent project ownership and transfers.
+    @param _directory Juicebox directory.
+    @param _operatorStore Juicebox operator store.
+    @param _projects Juicebox projects NFT.
     @param _owner The address that will own the contract.
   */
   constructor(
@@ -76,6 +84,11 @@ contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
   // ------------------------- external views -------------------------- //
   //*********************************************************************//
 
+  /**
+    @notice Allows the project owner to define a role for a project.
+
+    @dev Internally the role names are hashed together with the project id.
+   */
   function addProjectRole(uint256 _projectId, string calldata _role)
     public
     override
@@ -96,6 +109,9 @@ contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
     emit AddRole(_projectId, _role);
   }
 
+  /**
+    @notice Allows the project owner to remove a previously defined role.
+   */
   function removeProjectRole(uint256 _projectId, string calldata _role)
     public
     override
@@ -128,13 +144,12 @@ contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
     }
     projectRoles[_projectId] = updatedRoles;
 
-    // trustless function to clean up userRoles if roleNames[roleId] is blank?
-    // userRoles mapping(uint256 => mapping(address => uint256[]))
-    // TODO: currently there is no roleid -> user map
-
     emit RemoveRole(_projectId, _role);
   }
 
+  /**
+    @notice Returns a list of role names for a given project.
+   */
   function listProjectRoles(uint256 _projectId) public view override returns (string[] memory) {
     uint256[] memory roleIds = projectRoles[_projectId];
     string[] memory roles = new string[](roleIds.length);
@@ -147,6 +162,9 @@ contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
     return roles;
   }
 
+  /**
+    @notice Allows the project owner to grant a previously defined role to a user.
+   */
   function grantProjectRole(
     uint256 _projectId,
     address _account,
@@ -193,6 +211,9 @@ contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
     emit GrantRole(_projectId, _role, _account);
   }
 
+  /**
+    @notice Allows the project owner to revoke a role from a given user.
+   */
   function revokeProjectRole(
     uint256 _projectId,
     address _account,
@@ -255,6 +276,9 @@ contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
     emit RevokeRole(_projectId, _role, _account);
   }
 
+  /**
+    @notice Returns roles for a given project, account pair.
+   */
   function getUserRoles(uint256 _projectId, address _account)
     public
     view
@@ -272,6 +296,9 @@ contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
     return currentRoleNames;
   }
 
+  /**
+    @notice Returns users for a given project, role pair.
+   */
   function getProjectUsers(uint256 _projectId, string calldata _role)
     public
     view
@@ -313,6 +340,9 @@ contract JBRoleManager is JBOperatable, Ownable, IJBRoleManager {
     return matchingUsers;
   }
 
+  /**
+    @notice Validates that a given user has the requested permission for given project.
+   */
   function confirmUserRole(
     uint256 _projectId,
     address _account,
