@@ -2,6 +2,11 @@
 pragma solidity 0.8.6;
 
 interface IJBRoleManager {
+  event AddRole(uint256 indexed _projectId, string _role);
+  event RemoveRole(uint256 indexed _projectId, string _role);
+  event GrantRole(uint256 indexed _projectId, string _role, address _account);
+  event RevokeRole(uint256 indexed _projectId, string _role, address _account);
+
   function addProjectRole(uint256 _projectId, string calldata _role) external;
 
   function removeProjectRole(uint256 _projectId, string calldata _role) external;
