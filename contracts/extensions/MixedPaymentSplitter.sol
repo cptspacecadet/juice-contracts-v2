@@ -18,9 +18,9 @@ contract MixedPaymentSplitter is Context {
   event PayeeAdded(address account, uint256 shares);
   event ProjectAdded(uint256 project, uint256 shares);
   event PaymentReleased(address account, uint256 amount);
-  event PaymentReleased(uint256 projectId, uint256 amount);
+  event ProjectPaymentReleased(uint256 projectId, uint256 amount);
   event ERC20PaymentReleased(IERC20 indexed token, address account, uint256 amount);
-  event ERC20PaymentReleased(IERC20 indexed token, uint256 projectId, uint256 amount);
+  event ERC20ProjectPaymentReleased(IERC20 indexed token, uint256 projectId, uint256 amount);
   event PaymentReceived(address from, uint256 amount);
 
   error INVALID_LENGTH();
@@ -67,6 +67,8 @@ contract MixedPaymentSplitter is Context {
     if (_projects.length != 0 && address(_jbxDirectory) == address(0)) {
       revert INVALID_DIRECTORY();
     }
+
+    jbxDirectory = _jbxDirectory;
 
     for (uint256 i; i != _payees.length; ) {
       _addPayee(_payees[i], _shares[i]);
@@ -148,17 +150,17 @@ contract MixedPaymentSplitter is Context {
   }
 
   function release(uint256 _projectId) public virtual {
-    require(shares[_projectId << 160] > 0, 'PaymentSplitter: account has no shares');
+    uint256 key = _projectId << 160;
+    require(shares[key] > 0, 'PaymentSplitter: project has no shares');
 
-    uint256 payment = releasable(_projectId << 160);
-
-    require(payment != 0, 'PaymentSplitter: account is not due payment');
+    uint256 payment = releasable(_projectId);
+    require(payment != 0, 'PaymentSplitter: project is not due payment');
 
     // _totalReleased is the sum of all values in _released.
     // If "_totalReleased += payment" does not overflow, then "_released[account] += payment" cannot overflow.
     totalReleased += payment;
     unchecked {
-      released[_projectId << 160] += payment;
+      released[key] += payment;
     }
 
     IJBPaymentTerminal terminal = jbxDirectory.primaryTerminalOf(_projectId, JBTokens.ETH);
@@ -167,7 +169,7 @@ contract MixedPaymentSplitter is Context {
     }
 
     terminal.addToBalanceOf(_projectId, payment, JBTokens.ETH, '', '');
-    emit PaymentReleased(_projectId, payment);
+    emit ProjectPaymentReleased(_projectId, payment);
   }
 
   function release(IERC20 _token, address _account) public virtual {
@@ -191,11 +193,11 @@ contract MixedPaymentSplitter is Context {
 
   function release(IERC20 _token, uint256 _projectId) public virtual {
     uint256 key = _projectId << 160;
-    require(shares[key] > 0, 'PaymentSplitter: account has no shares');
+    require(shares[key] > 0, 'PaymentSplitter: project has no shares');
 
     uint256 payment = releasable(_token, key);
 
-    require(payment != 0, 'PaymentSplitter: account is not due payment');
+    require(payment != 0, 'PaymentSplitter: project is not due payment');
 
     // _erc20TotalReleased[token] is the sum of all values in _erc20Released[token].
     // If "_erc20TotalReleased[token] += payment" does not overflow, then "_erc20Released[token][account] += payment"
@@ -212,7 +214,7 @@ contract MixedPaymentSplitter is Context {
 
     _token.approve(address(terminal), payment);
     terminal.addToBalanceOf(_projectId, payment, JBTokens.ETH, '', '');
-    emit ERC20PaymentReleased(_token, _projectId, payment);
+    emit ERC20ProjectPaymentReleased(_token, _projectId, payment);
   }
 
   function _pendingPayment(
@@ -225,7 +227,7 @@ contract MixedPaymentSplitter is Context {
 
   function _addPayee(address _account, uint256 _shares) private {
     require(_account != address(0), 'PaymentSplitter: account is the zero address');
-    require(_shares > 0, 'PaymentSplitter: shares are 0');
+    require(_shares != 0, 'PaymentSplitter: shares are 0');
 
     uint256 k = uint256(uint160(_account));
     require(shares[k] == 0, 'PaymentSplitter: account already has shares');
@@ -247,7 +249,7 @@ contract MixedPaymentSplitter is Context {
     }
 
     require(_projectId != 0, 'PaymentSplitter: account is the zero address');
-    require(_shares > 0, 'PaymentSplitter: shares are 0');
+    require(_shares != 0, 'PaymentSplitter: shares are 0');
 
     uint256 k = _projectId << 160;
     require(shares[k] == 0, 'PaymentSplitter: account already has shares');
