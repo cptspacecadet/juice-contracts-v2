@@ -7,7 +7,8 @@ import jbDirectory from '../../artifacts/contracts/JBDirectory.sol/JBDirectory.j
 import jbTerminal from '../../artifacts/contracts/abstract/JBPayoutRedemptionPaymentTerminal.sol/JBPayoutRedemptionPaymentTerminal.json';
 
 describe('MixedPaymentSplitter tests', () => {
-    const projects = [2, 3, 4]
+    const name = 'example-splitter';
+    const projects = [2, 3, 4];
     const payees: string[] = [];
     const shares = [2000, 1000, 2000, 2000, 1000, 2000];
 
@@ -43,7 +44,7 @@ describe('MixedPaymentSplitter tests', () => {
         });
         mixedPaymentSplitter = await mixedPaymentSplitterFactory
             .connect(deployer)
-            .deploy(payees, projects, shares, directory.address);
+            .deploy(name, payees, projects, shares, directory.address);
 
         await accounts[0].sendTransaction({ to: mixedPaymentSplitter.address, value: ethers.utils.parseEther('1.0') });
     });
