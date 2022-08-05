@@ -45,12 +45,14 @@ contract MixedPaymentSplitter is Context {
   mapping(IERC20 => mapping(uint256 => uint256)) private _erc20Released;
 
   IJBDirectory jbxDirectory;
+  string public name;
 
   constructor(
     address[] memory _payees,
     uint256[] memory _projects,
     uint256[] memory _shares,
-    IJBDirectory _jbxDirectory
+    IJBDirectory _jbxDirectory,
+    string memory _name
   ) {
     if (_payees.length == 0 && _projects.length == 0) {
       revert INVALID_LENGTH();
@@ -69,6 +71,7 @@ contract MixedPaymentSplitter is Context {
     }
 
     jbxDirectory = _jbxDirectory;
+    name = _name;
 
     for (uint256 i; i != _payees.length; ) {
       _addPayee(_payees[i], _shares[i]);
