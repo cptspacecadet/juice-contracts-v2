@@ -48,11 +48,11 @@ contract MixedPaymentSplitter is Context {
   string public name;
 
   constructor(
+    string memory _name,
     address[] memory _payees,
     uint256[] memory _projects,
     uint256[] memory _shares,
-    IJBDirectory _jbxDirectory,
-    string memory _name
+    IJBDirectory _jbxDirectory
   ) {
     if (_payees.length == 0 && _projects.length == 0) {
       revert INVALID_LENGTH();
