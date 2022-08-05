@@ -3,13 +3,7 @@
 // https://www.npmjs.com/package/solidity-coverage
 
 module.exports = {
-  skipFiles: [
-    'system_tests',
-    'libraries',
-    'structs',
-    'interfaces',
-    'enums'
-  ],
+  skipFiles: ['enums/', 'interfaces/', 'libraries/', 'structs/', 'system_tests/'],
   configureYulOptimizer: true,
   measureStatementCoverage: false,
 };

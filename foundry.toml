@@ -6,8 +6,11 @@ libs = ['lib']
 remappings = [
     '@juicebox=contracts/',
     '@chainlink=lib/chainlink/',
-    '@openzeppelin=lib/openzeppelin-contracts',
+    '@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/',
     '@paulrberg/contracts/math/=lib/prb-math/contracts',
+    '@uniswap/v3-core=node_modules/@uniswap/v3-core',
+    '@uniswap/v3-periphery=node_modules/@uniswap/v3-periphery',
+    'hardhat=node_modules/hardhat',
     'prb-math=lib/prb-math/',
     'ds-test/=lib/ds-test/src/',
     'forge-std/=lib/forge-std/src/',
@@ -34,4 +37,3 @@ block_base_fee_per_gas = 0
 block_coinbase = '0x0000000000000000000000000000000000000000'
 block_timestamp = 1643802347
 block_difficulty = 0
-

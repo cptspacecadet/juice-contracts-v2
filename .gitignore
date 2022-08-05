@@ -1,6 +1,7 @@
 node_modules
 .env
 *.txt
+!remappings.txt
 
 # Foundry
 out
@@ -9,6 +10,7 @@ out
 cache
 artifacts
 deployments/localhost/**
+typechain
 
 # Mac OSX
 .DS_Store
@@ -20,3 +22,5 @@ coverage.json
 # VSCode
 workspace.code-workspace
 .vscode/
+
+mnemonic.txt
